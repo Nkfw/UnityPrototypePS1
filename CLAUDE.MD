@@ -1,6 +1,6 @@
 # Sheep Stealth Puzzle Game - Project Reference
 
-**Last Updated:** 2026-01-21
+**Last Updated:** 2026-01-24
 
 ## Quick Status Overview
 
@@ -84,7 +84,7 @@ Guard (GameObject)
 | Entity | Component | Reason |
 |--------|-----------|--------|
 | Player | CharacterController | Precise control, no physics sliding |
-| Sheep | CharacterController | Consistent behavior, predictable movement |
+| Sheep | Rigidbody (Kinematic) | MovePosition for smooth movement, trigger detection |
 | Guard | NavMeshAgent | Pathfinding for patrol and chase |
 
 ### Gravity Handling
@@ -219,8 +219,10 @@ Currently implemented as a **stationary guard** that watches over sheep:
    **Files:** `LettuceGarden.cs`
    - Spawner system that maintains fixed number of lettuces per level (default: 4)
    - Automatically respawns destroyed/eaten lettuces
-   - Random spawn positions within configurable radius
-   - Ground detection for accurate placement
+   - **Predefined spawn points using Transform array (level designer control)**
+   - Dictionary-based spawn tracking to prevent double-spawning at same location
+   - Ground detection for accurate placement via raycast
+   - Visual gizmos showing X marks at spawn points for level design
    - Prevents soft-locking (player always has resources)
 
 ### Planned Items
@@ -336,10 +338,12 @@ Assets/Script/
 ├── PlayerInteraction.cs         ← Pickup/drop sheep/lettuce with E key ✅
 ├── Sheep.cs                     ← Basic sheep state (idle/carried) ✅
 ├── SheepAttraction.cs           ← Sheep AI: attraction, walking, eating ✅
-├── Lettuce.cs                   ← Lettuce item pickup/drop mechanics ✅
-├── LettuceGarden.cs             ← Lettuce spawner system ✅
+├── ISheepAttraction.cs          ← Interface for all attraction types ✅
 ├── BridgeCollapse.cs            ← Bridge hazard detection ✅
 ├── WinZoneCheck.cs              ← Goal zone detection ✅
+├── Lettuces/
+│   ├── Lettuce.cs               ← Lettuce item (implements ISheepAttraction) ✅
+│   └── LettuceGarden.cs         ← Lettuce spawner system ✅
 └── Guard Scripts/
     ├── GuardStationary.cs       ← Main guard state machine ✅
     ├── GuardChase.cs            ← Chase and catch behavior ✅

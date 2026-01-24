@@ -835,7 +835,7 @@ GameObject:
   - component: {fileID: 1084495932}
   m_Layer: 0
   m_Name: Following Zone
-  m_TagString: Untagged
+  m_TagString: Following Zone
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -927,8 +927,8 @@ Transform:
   m_GameObject: {fileID: 1084495927}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -12.38, y: 0.93, z: 35.18}
-  m_LocalScale: {x: 33.133175, y: 1, z: 32.203068}
+  m_LocalPosition: {x: -3.4, y: 0.93, z: 35}
+  m_LocalScale: {x: 49.835606, y: 1, z: 32.203068}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -942,9 +942,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 1084495927}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bdd5e554f2315bd4b9020e6a7b10cbf4, type: 3}
+  m_Script: {fileID: 11500000, guid: a33dacd92ffc735428f1928e13dd9684, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::FollowingZone
+  m_EditorClassIdentifier: Assembly-CSharp::TerritoryZone
 --- !u!1 &1212905381
 GameObject:
   m_ObjectHideFlags: 0
@@ -2079,15 +2079,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 4254708230626134615, guid: 3f09b393400ab3a4aaa169e57762dfb0, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 3.35
+      value: 4.43
       objectReference: {fileID: 0}
     - target: {fileID: 4254708230626134615, guid: 3f09b393400ab3a4aaa169e57762dfb0, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.2
+      value: 0.399
       objectReference: {fileID: 0}
     - target: {fileID: 4254708230626134615, guid: 3f09b393400ab3a4aaa169e57762dfb0, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 45.85
+      value: 47.09
       objectReference: {fileID: 0}
     - target: {fileID: 4254708230626134615, guid: 3f09b393400ab3a4aaa169e57762dfb0, type: 3}
       propertyPath: m_LocalRotation.w
@@ -2121,10 +2121,6 @@ PrefabInstance:
       propertyPath: m_Name
       value: Sheep
       objectReference: {fileID: 0}
-    - target: {fileID: 5370764310712628155, guid: 3f09b393400ab3a4aaa169e57762dfb0, type: 3}
-      propertyPath: detectionRadius
-      value: 10
-      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -2140,7 +2136,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 1194852773714733830, guid: 2a9cc9d8c8ae9f94f946de83af9643e9, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 14.937
+      value: 24.16
       objectReference: {fileID: 0}
     - target: {fileID: 1194852773714733830, guid: 2a9cc9d8c8ae9f94f946de83af9643e9, type: 3}
       propertyPath: m_LocalPosition.y
@@ -2148,7 +2144,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1194852773714733830, guid: 2a9cc9d8c8ae9f94f946de83af9643e9, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 40.939
+      value: 42.5
       objectReference: {fileID: 0}
     - target: {fileID: 1194852773714733830, guid: 2a9cc9d8c8ae9f94f946de83af9643e9, type: 3}
       propertyPath: m_LocalRotation.w

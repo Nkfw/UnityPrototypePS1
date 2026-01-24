@@ -1,6 +1,6 @@
 # Sheep Stealth Puzzle Game - Current Project Status
 
-**Last Updated:** 2026-01-21
+**Last Updated:** 2026-01-24
 
 ---
 
@@ -94,8 +94,10 @@ Some levels have different loop, but it all comes to delivering the sheep or spe
 **Spawner System:**
 - `LettuceGarden.cs` - Maintains fixed number of lettuces per level (default: 4)
 - Automatically respawns destroyed/eaten lettuces
-- Random spawn positions within configurable radius
-- Ground detection for accurate placement
+- **Predefined spawn points using Transform array (level designer control)**
+- Dictionary-based spawn tracking to prevent double-spawning
+- Ground detection for accurate placement via raycast
+- Visual gizmos showing X marks at spawn points for level design
 - Prevents soft-locking (player always has resources)
 
 **Working As Expected:** ✅
@@ -394,9 +396,19 @@ Assets/
 │   ├── PlayerController.cs ✅
 │   ├── PlayerInteraction.cs ✅
 │   ├── Sheep.cs ✅
-│   ├── SheepAttraction.cs ✅ (partial)
-│   ├── Lettuce.cs ✅
-│   └── BridgeCollapse.cs ✅
+│   ├── SheepAttraction.cs ✅
+│   ├── ISheepAttraction.cs ✅
+│   ├── BridgeCollapse.cs ✅
+│   ├── WinZoneCheck.cs ✅
+│   ├── Lettuces/
+│   │   ├── Lettuce.cs ✅
+│   │   └── LettuceGarden.cs ✅
+│   └── Guard Scripts/
+│       ├── GuardStationary.cs ✅
+│       ├── GuardChase.cs ✅
+│       ├── GuardVisionCone.cs ✅
+│       ├── GuardHearingZone.cs ✅
+│       └── FollowingZone.cs ✅
 │
 ├── Scenes/
 │   └── [Level scenes]
@@ -405,7 +417,8 @@ Assets/
     ├── Player.prefab ✅
     ├── Sheep.prefab ✅
     ├── Lettuce.prefab ✅
-    └── Bridge.prefab ✅
+    ├── Bridge.prefab ✅
+    └── Guard.prefab ✅
 ```
 
 **Missing Folders:**
@@ -495,10 +508,9 @@ Assets/
 - Priority: Medium (affects gameplay feel)
 
 **Lettuce Spawner:**
-- ⚠️ LettuceGarden spawns at random positions within radius
-- Need: Specific coordinate spawn points for level design control
-- Current: Random spawn prevents soft-locking but limits puzzle design
-- Priority: Medium (needed for proper level design)
+- ✅ **FIXED** - LettuceGarden now uses predefined Transform[] spawn points
+- ✅ **FIXED** - Dictionary tracking prevents double-spawning at same location
+- ✅ Visual gizmos show spawn point locations for level design
 
 ### Recently Fixed:
 - ✅ Kinematic Rigidbody linearVelocity error

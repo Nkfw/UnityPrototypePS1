@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 303922356731725531}
   - component: {fileID: 4097104635724601730}
   - component: {fileID: 5370764310712628155}
+  - component: {fileID: 6152423609748862589}
   m_Layer: 0
   m_Name: Sheep
   m_TagString: Sheep
@@ -114,9 +115,9 @@ CapsuleCollider:
   m_Enabled: 1
   serializedVersion: 2
   m_Radius: 0.5
-  m_Height: 2
+  m_Height: 4.106236
   m_Direction: 1
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Center: {x: 0, y: 0.4, z: 0}
 --- !u!114 &303922356731725531
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -169,7 +170,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ecf550fbaffec374aa27e697ea9624b6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SheepAttraction
-  detectionRadius: 7
+  detectionRadius: 10
   sniffDelay: 1
   eatDuration: 2
   moveSpeed: 16.5
@@ -180,3 +181,20 @@ MonoBehaviour:
   groundRaycastDistance: 10
   maxHeightAboveGround: 2
   showDebugGizmos: 1
+--- !u!114 &6152423609748862589
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5131455802407049099}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 64c59bf7b9a0c404f80ed4c1057c1128, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SheepFollowingZone
+  thinkingDuration: 5
+  isInsideZone: 1
+  hasEscaped: 0
+  thinkingTimer: 0
+  homePosition: {x: 0, y: 0, z: 0}

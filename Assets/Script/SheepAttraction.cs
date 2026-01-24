@@ -22,18 +22,23 @@ public class SheepAttraction : MonoBehaviour
     [SerializeField] private bool showDebugGizmos = true;
 
     // Current state
-    private enum SheepState
+    public enum SheepState
     {
         Idle,       // Standing around, looking for lettuce
         Sniffing,   // Detected lettuce, preparing to move
         Walking,    // Moving toward lettuce
-        Eating      // At lettuce, eating it
+        Eating,     // At lettuce, eating it
+        Returning   // Returning to home position (territory system)
     }
 
     private SheepState currentState = SheepState.Idle;
     private ISheepAttraction targetAttraction;
     private Sheep sheepComponent;
     private Rigidbody rb;
+    private Vector3 homePosition; // Where to return when in territory
+
+    // Public property to expose current state (for SheepFollowingZone)
+    public SheepState CurrentState => currentState;
 
     private void Awake()
     {
@@ -86,7 +91,11 @@ public class SheepAttraction : MonoBehaviour
                 MoveTowardTarget();
                 break;
 
-                // Sniffing and Interacting are handled by coroutines
+            case SheepState.Returning:
+                ReturnToHome();
+                break;
+
+                // Sniffing and Eating are handled by coroutines
         }
     }
 
@@ -113,6 +122,8 @@ public class SheepAttraction : MonoBehaviour
         {
             return;
         }
+
+        Debug.Log($"Sheep {name}: Found {allAttractions.Length} total attractions in scene");
 
         // Find closest available attraction within detection radius
         ISheepAttraction closestAttraction = null;
@@ -148,7 +159,12 @@ public class SheepAttraction : MonoBehaviour
         if (closestAttraction != null)
         {
             targetAttraction = closestAttraction;
+            Debug.Log($"Sheep {name}: Selected attraction '{closestAttraction.GetGameObject().name}' at distance {closestDistance:F2}");
             StartCoroutine(SniffBeforeMoving());
+        }
+        else
+        {
+            Debug.Log($"Sheep {name}: No valid attractions found within detection radius");
         }
     }
 
@@ -291,6 +307,55 @@ public class SheepAttraction : MonoBehaviour
         currentState = SheepState.Idle;
     }
 
+    // ===== TERRITORY SYSTEM - Called by SheepFollowingZone =====
+
+    public void StartReturningHome(Vector3 home)
+    {
+        homePosition = home;
+        currentState = SheepState.Returning;
+        Debug.Log($"Sheep {name}: Starting return home to {home}");
+    }
+
+    private void ReturnToHome()
+    {
+        // First, check if new attraction appeared (auto-cancel return)
+        LookForAttractions();
+
+        // If attraction found, state changed to Sniffing, exit
+        if (currentState != SheepState.Returning)
+        {
+            Debug.Log($"Sheep {name}: Found attraction while returning, canceling return!");
+            return;
+        }
+
+        // Calculate distance to home
+        float distanceToHome = Vector3.Distance(transform.position, homePosition);
+
+        // Reached home?
+        if (distanceToHome < reachDistance)
+        {
+            currentState = SheepState.Idle;
+            Debug.Log($"Sheep {name}: Reached home!");
+            return;
+        }
+
+        // Move toward home (same logic as MoveTowardTarget)
+        Vector3 direction = (homePosition - transform.position).normalized;
+        Vector3 newPosition = transform.position + direction * moveSpeed * Time.deltaTime;
+
+        if (rb != null)
+        {
+            rb.MovePosition(newPosition);
+        }
+
+        // Rotate to face home
+        if (direction != Vector3.zero)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(direction);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, 5f * Time.deltaTime);
+        }
+    }
+
     // Debug visualization
     private void OnDrawGizmos()
     {
@@ -307,6 +372,17 @@ public class SheepAttraction : MonoBehaviour
             Gizmos.DrawLine(transform.position, targetAttraction.GetPosition());
         }
 
+        // Draw line to home when returning
+        if (currentState == SheepState.Returning)
+        {
+            Gizmos.color = Color.magenta;
+            Gizmos.DrawLine(transform.position, homePosition);
+
+            // Draw home position marker
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireSphere(homePosition, 0.5f);
+        }
+
         // Draw state indicator
         Vector3 statePos = transform.position + Vector3.up * 2f;
         Gizmos.color = currentState switch
@@ -315,6 +391,7 @@ public class SheepAttraction : MonoBehaviour
             SheepState.Sniffing => Color.cyan,
             SheepState.Walking => Color.green,
             SheepState.Eating => Color.red,
+            SheepState.Returning => Color.magenta,
             _ => Color.white
         };
         Gizmos.DrawWireSphere(statePos, 0.3f);

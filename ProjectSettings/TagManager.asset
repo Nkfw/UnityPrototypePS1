@@ -8,6 +8,7 @@ TagManager:
   - Lettuce
   - Bridge
   - Guard
+  - Following Zone
   layers:
   - Default
   - TransparentFX
