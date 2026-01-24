@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using UnityEngine;
 
 // This script goes on the Sheep GameObject
@@ -30,7 +31,7 @@ public class SheepAttraction : MonoBehaviour
     }
 
     private SheepState currentState = SheepState.Idle;
-    private GameObject targetLettuce;
+    private ISheepAttraction targetAttraction;
     private Sheep sheepComponent;
     private Rigidbody rb;
 
@@ -78,14 +79,14 @@ public class SheepAttraction : MonoBehaviour
         switch (currentState)
         {
             case SheepState.Idle:
-                LookForLettuce();
+                LookForAttractions();
                 break;
 
             case SheepState.Walking:
-                MoveTowardLettuce();
+                MoveTowardTarget();
                 break;
 
-                // Sniffing and Eating are handled by coroutines
+                // Sniffing and Interacting are handled by coroutines
         }
     }
 
@@ -95,48 +96,58 @@ public class SheepAttraction : MonoBehaviour
         StopAllCoroutines();
 
         // Clear target and reset to idle
-        targetLettuce = null;
+        targetAttraction = null;
         currentState = SheepState.Idle;
 
         Debug.Log($"Sheep {name}: State reset (picked up)");
     }
 
-    private void LookForLettuce()
+    private void LookForAttractions()
     {
-        // Find all objects with "Lettuce" tag
-        GameObject[] lettuces = GameObject.FindGameObjectsWithTag("Lettuce");
+        // Find all objects that implement ISheepAttraction
+        ISheepAttraction[] allAttractions = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None)
+            .OfType<ISheepAttraction>()
+            .ToArray();
 
-        if (lettuces.Length == 0)
+        if (allAttractions.Length == 0)
         {
             return;
         }
 
-        // Find closest lettuce within detection radius
-        GameObject closest = null;
+        // Find closest available attraction within detection radius
+        ISheepAttraction closestAttraction = null;
         float closestDistance = detectionRadius;
+        float highestPriority = 0f;
 
-        foreach (GameObject lettuceObj in lettuces)
+        foreach (ISheepAttraction attraction in allAttractions)
         {
-            // Check if lettuce is being carried (skip if it is)
-            Lettuce lettuceComponent = lettuceObj.GetComponent<Lettuce>();
-            if (lettuceComponent != null && lettuceComponent.IsBeingCarried)
+            // Skip unavailable attractions (e.g., being carried)
+            if (!attraction.IsAvailable())
             {
-                continue; // Skip carried lettuce
+                continue;
             }
 
-            float distance = Vector3.Distance(transform.position, lettuceObj.transform.position);
+            float distance = Vector3.Distance(transform.position, attraction.GetPosition());
 
+            // Check if within detection radius
             if (distance < closestDistance)
             {
-                closest = lettuceObj;
-                closestDistance = distance;
+                // Consider priority when choosing between attractions at similar distances
+                float priority = attraction.GetPriority();
+
+                if (closestAttraction == null || distance < closestDistance * 0.9f || priority > highestPriority)
+                {
+                    closestAttraction = attraction;
+                    closestDistance = distance;
+                    highestPriority = priority;
+                }
             }
         }
 
-        // If found lettuce, start sniffing
-        if (closest != null)
+        // If found attraction, start sniffing
+        if (closestAttraction != null)
         {
-            targetLettuce = closest;
+            targetAttraction = closestAttraction;
             StartCoroutine(SniffBeforeMoving());
         }
     }
@@ -144,51 +155,44 @@ public class SheepAttraction : MonoBehaviour
     private IEnumerator SniffBeforeMoving()
     {
         currentState = SheepState.Sniffing;
-        Debug.Log($"Sheep {name}: Sniffing lettuce...");
+        Debug.Log($"Sheep {name}: Sniffing attraction...");
 
         // Wait for sniff delay
         yield return new WaitForSeconds(sniffDelay);
 
-        // Check if lettuce still exists
-        if (targetLettuce == null)
+        // Check if attraction still exists and is available
+        if (targetAttraction == null || !targetAttraction.IsAvailable())
         {
+            targetAttraction = null;
             currentState = SheepState.Idle;
             yield break;
         }
 
         // Start walking
         currentState = SheepState.Walking;
-        Debug.Log($"Sheep {name}: Walking to lettuce!");
+        Debug.Log($"Sheep {name}: Walking to attraction!");
     }
 
-    private void MoveTowardLettuce()
+    private void MoveTowardTarget()
     {
-        // Check if lettuce was destroyed
-        if (targetLettuce == null)
+        // Check if attraction was destroyed or became unavailable
+        if (targetAttraction == null || !targetAttraction.IsAvailable())
         {
+            Debug.Log($"Sheep {name}: Attraction no longer available, stopping pursuit");
+            targetAttraction = null;
             currentState = SheepState.Idle;
             return;
         }
 
-        // Check if lettuce was picked up by player
-        Lettuce lettuceComponent = targetLettuce.GetComponent<Lettuce>();
-        if (lettuceComponent != null && lettuceComponent.IsBeingCarried)
-        {
-            Debug.Log($"Sheep {name}: Lettuce picked up, stopping pursuit");
-            targetLettuce = null;
-            currentState = SheepState.Idle;
-            return;
-        }
-
-        // Calculate direction to lettuce
-        Vector3 direction = (targetLettuce.transform.position - transform.position);
+        // Calculate direction to attraction
+        Vector3 direction = (targetAttraction.GetPosition() - transform.position);
         direction.y = 0; // Keep movement horizontal
         float distance = direction.magnitude;
 
-        // Check if reached lettuce
+        // Check if reached attraction
         if (distance < reachDistance)
         {
-            StartCoroutine(EatLettuce());
+            StartCoroutine(InteractWithTarget());
             return;
         }
 
@@ -253,20 +257,34 @@ public class SheepAttraction : MonoBehaviour
         }
     }
 
-    private IEnumerator EatLettuce()
+    private IEnumerator InteractWithTarget()
     {
         currentState = SheepState.Eating;
-        Debug.Log($"Sheep {name}: Eating lettuce...");
+        Debug.Log($"Sheep {name}: Interacting with attraction...");
 
-        // Wait while eating
+        // Notify the attraction that sheep is interacting
+        if (targetAttraction != null)
+        {
+            targetAttraction.OnSheepInteract(sheepComponent);
+        }
+
+        // Wait while interacting
         yield return new WaitForSeconds(eatDuration);
 
-        // Destroy the lettuce
-        if (targetLettuce != null)
+        // Check if attraction should be destroyed after interaction
+        if (targetAttraction != null)
         {
-            Debug.Log($"Sheep {name}: Finished eating lettuce!");
-            Destroy(targetLettuce);
-            targetLettuce = null;
+            if (targetAttraction.ShouldDestroyAfterInteraction())
+            {
+                Debug.Log($"Sheep {name}: Finished interacting! Destroying attraction.");
+                Destroy(targetAttraction.GetGameObject());
+            }
+            else
+            {
+                Debug.Log($"Sheep {name}: Finished interacting! Attraction remains.");
+            }
+
+            targetAttraction = null;
         }
 
         // Return to idle
@@ -282,11 +300,11 @@ public class SheepAttraction : MonoBehaviour
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, detectionRadius);
 
-        // Draw line to target lettuce
-        if (targetLettuce != null && (currentState == SheepState.Walking || currentState == SheepState.Eating))
+        // Draw line to target attraction
+        if (targetAttraction != null && (currentState == SheepState.Walking || currentState == SheepState.Eating))
         {
             Gizmos.color = Color.green;
-            Gizmos.DrawLine(transform.position, targetLettuce.transform.position);
+            Gizmos.DrawLine(transform.position, targetAttraction.GetPosition());
         }
 
         // Draw state indicator

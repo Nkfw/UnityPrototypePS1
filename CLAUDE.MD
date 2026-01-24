@@ -1,5 +1,29 @@
 # Sheep Stealth Puzzle Game - Project Reference
 
+**Last Updated:** 2026-01-21
+
+## Quick Status Overview
+
+**What's Playable Right Now:**
+- ✅ Player movement (walk, run, crouch, jump) with camera-relative controls
+- ✅ Pick up and carry sheep/lettuce, drop them
+- ✅ Sheep AI attracts to lettuce, walks to it, eats it
+- ✅ Lettuce spawner maintains resource availability
+- ✅ Bridge hazards collapse when conditions met
+- ✅ Stationary guard with vision cone detection and chase
+- ✅ Win zone completes level when sheep enters
+
+**What's Missing for Core Gameplay:**
+- ⏳ Territory/return system (sheep go back home if not rescued quickly)
+- ⏳ Kill zones and checkpoints (fail states for falling)
+- ⏳ Patrolling guards (currently only stationary)
+- ⏳ Advanced gadgets (Salad Gun, Fan, Perfume)
+- ⏳ UI polish and visual feedback
+
+**Project Completion:** ~60% (core mechanics done, needs systems integration and polish)
+
+---
+
 ## Project Overview
 
 This is a Unity 3D stealth puzzle game inspired by "Sheep, Dog 'n' Wolf" (2001). The player controls a wolf-like character who must steal sheep from a guarded flock and deliver them to a goal zone while avoiding detection by a patrolling guard dog.
@@ -33,11 +57,20 @@ Scout Level → Collect Gadgets → Lure Sheep → Avoid Guard → Deliver to Go
 ```
 Player (GameObject)
 ├── CharacterController
-├── PlayerController.cs        ← Movement, jump, gravity ONLY
-├── PlayerInteraction.cs       ← Pickup, use items, press E (future)
-├── PlayerInventory.cs         ← Manage held items, switching (future)
-├── PlayerStateManager.cs      ← Walking/sneaking/running states (future)
+├── PlayerController.cs        ← Movement, jump, gravity, crouch, run
+├── PlayerInteraction.cs       ← Pickup/drop sheep with E key
 └── PlayerInput                ← Unity Input System component
+```
+
+#### Guard Script Structure:
+```
+Guard (GameObject)
+├── NavMeshAgent
+├── GuardStationary.cs         ← Main state machine: Idle, Alert, Chasing
+├── GuardChase.cs              ← Chase behavior and player catching
+├── GuardVisionCone.cs         ← Vision detection with raycast
+├── GuardHearingZone.cs        ← Spherical hearing trigger
+└── FollowingZone.cs           ← Detection zone trigger
 ```
 
 **Why this works:**
@@ -86,106 +119,242 @@ Uses **Cinemachine FreeLook** for third-person camera:
 
 ### Sheep States
 
-- **Idle**: Standing in flock
-- **Following**: Walking toward attraction source (food/scent)
+**Files:** `Sheep.cs`, `SheepAttraction.cs`
+
+**Currently Implemented States:**
+- **Idle**: Standing still, waiting for attractions
+- **Sniffing**: Detected attraction, brief delay before moving (configurable)
+- **Walking**: Moving toward attraction source using `Rigidbody.MovePosition()`
+- **Eating**: At lettuce location, 2-second eating duration (configurable), destroys lettuce
 - **Carried**: Being held by player
-- **Sniffing**: At attraction source, temporary (~5 sec)
-- **Returning**: Walking back to original position
 
-**Key Mechanic**: When picked up, sheep's collider is disabled and parented to player. When dropped, it's unparented and collider re-enabled.
+**Attraction System (COMPLETE):**
+- Detects closest lettuce within configurable radius
+- Handles multiple lettuce sources (always picks closest)
+- Ignores carried lettuce
+- Walks to lettuce → Eats it → Destroys it → Returns to Idle
+- Complete state machine: Idle → Sniffing → Walking → Eating → Idle
 
-**IMPORTANT**: Sheep requires a **kinematic Rigidbody** for:
-- Trigger detection (OnTriggerEnter in WinZone)
-- Smooth movement via `Rigidbody.MovePosition()`
-- Arcade-style physics (no bouncing/sliding)
+**Pickup Mechanics:**
+- When picked up: collider disabled, parented to player's carry position
+- When dropped: unparented, collider re-enabled, kinematic physics
 
-### Guard States
+**Physics Setup:**
+- Uses **kinematic Rigidbody** for:
+  - Trigger detection (OnTriggerEnter in WinZone)
+  - Smooth movement via `Rigidbody.MovePosition()`
+  - Arcade-style physics (no bouncing/sliding)
+- Rotation constraints: X/Z locked to prevent tilting
+- Ground detection with emergency fallback
+- Falls when ground disappears
 
-- **Patrol**: Walking between waypoints
-- **Suspicious**: Player nearby but not seen
-- **Chase**: Pursuing detected player
-- **Return**: Going back to patrol route
+**Missing Features:**
+- **Territory/Return System** (planned): Sheep should return to home position if inside territory zone and no new attractions appear within 5 seconds after eating
+
+### Guard States (Stationary Version)
+
+Currently implemented as a **stationary guard** that watches over sheep:
+
+- **Idle**: Head slowly rotates left/right scanning area, vision cone active
+- **Alert**: Player detected in vision cone, brief delay before chase
+- **Chasing**: NavMesh pursuit of player, catches player on contact
+- **Return**: (Not yet implemented - guard continues chasing until player escapes)
+
+**Guard Components:**
+- `GuardStationary.cs`: Main state machine managing Idle/Alert/Chasing states with head rotation
+- `GuardChase.cs`: Handles NavMesh-based pursuit and player catching
+- `GuardVisionCone.cs`: Cone-shaped detection using angle check + raycast for line-of-sight
+- `GuardHearingZone.cs`: Spherical trigger for hearing detection (not yet connected to player states)
+- `FollowingZone.cs`: General detection zone trigger
+
+**Future Guard Types:**
+- **Patrol**: Walking between waypoints (planned)
+- **Return**: Going back to patrol route after losing player (planned)
 
 ## Detection System
 
-### Detection Levels
+### Current Implementation
 
-1. **None**: No indicator (too far)
-2. **Near**: Green icon (player in hearing range)
-3. **Hidden**: Orange icon (in detection zone but concealed)
-4. **Detected**: Red icon (guard sees player, chase begins)
+**Vision Cone Detection** (`GuardVisionCone.cs`):
+- Uses angle check to see if player is within field of view
+- Performs raycast for line-of-sight verification
+- Ignores detection if obstacles block view
+- Configurable vision angle and range
+- Debug visualization with colored rays
 
-Detection uses:
-- **Vision Cone**: Angle check + raycast for line-of-sight
-- **Hearing Range**: Sphere around guard
-- **Movement Noise**: Running alerts guard
+**Hearing Zone** (`GuardHearingZone.cs`):
+- Spherical trigger around guard
+- Detects player entry/exit
+- Not yet integrated with player movement states (running/sneaking)
+
+**State-Based Detection** (`GuardStationary.cs`):
+- Idle: Scans area with rotating head, checks vision cone continuously
+- Alert: Brief delay when player spotted before transitioning to chase
+- Chasing: Active pursuit via NavMesh
+
+### Planned Detection Features
+
+- **Movement Noise**: Running alerts guard, sneaking is silent
+- **Visual Indicator UI**: Show player when they're being detected
+  1. **None**: No indicator (too far)
+  2. **Near**: Green icon (player in hearing range)
+  3. **Hidden**: Orange icon (in detection zone but concealed)
+  4. **Detected**: Red icon (guard sees player, chase begins)
 
 ## Gadget System
 
-### Core Items
+### Currently Implemented Items
 
-1. **Lettuce**
-   - Placed on ground, attracts sheep within radius (~5 units)
-   - Sheep walks to it, eats it, then returns after sniffing
+1. **Lettuce** ✅
+   **Files:** `Lettuce.cs`
+   - Pickup/carry/drop mechanics (E key via PlayerInteraction)
+   - Rigidbody with gravity for realistic dropping
+   - Physics disabled when carried (kinematic + no gravity)
+   - Physics enabled when dropped (non-kinematic + gravity)
+   - Collider disabled when carried to prevent sheep attraction
+   - Attracts sheep within configurable radius
+   - Sheep walks to it, eats it (2-second eating duration), destroys it
 
-2. **Salad Gun**
+2. **Lettuce Garden** ✅
+   **Files:** `LettuceGarden.cs`
+   - Spawner system that maintains fixed number of lettuces per level (default: 4)
+   - Automatically respawns destroyed/eaten lettuces
+   - Random spawn positions within configurable radius
+   - Ground detection for accurate placement
+   - Prevents soft-locking (player always has resources)
+
+### Planned Items
+
+3. **Salad Gun** (Not Started)
    - Shoots lettuce at distant locations via raycast
    - Limited ammo per level
 
-3. **Fan**
+4. **Fan** (Not Started)
    - Creates wind zone (BoxCollider trigger)
    - Interacts with items implementing `IFanInteractable` interface
    - Passes wind direction to affected items
 
-4. **Perfume**
+5. **Perfume** (Not Started)
    - Sits on ground, idle by default
    - When hit by fan wind, creates a growing **scent beam**
    - Beam is a directional BoxCollider that attracts sheep from distance
    - Beam grows while wind is active (~2 sec to max length)
    - Beam shrinks when wind stops
 
-### Gadget Synergy Example
+### Gadget Synergy Example (Planned)
 
 ```
 Fan (active) → Perfume (idle) → Scent Beam (extends in wind direction) → Sheep (attracted from far away)
 ```
 
-## Sheep Attraction System
-
-### How Sheep Follow Attractions
-
-1. Sheep has `SphereCollider` trigger as "AttractionSensor"
-2. When attraction source (lettuce, scent beam) enters sensor:
-   - Sheep transitions to **Following** state
-   - Walks toward attraction position
-3. When sheep reaches target:
-   - Transitions to **Sniffing** state (5 sec)
-   - If target is lettuce, eats it (destroys object)
-4. After sniffing:
-   - Transitions to **Returning** state
-   - Walks back to original position
-   - Returns to **Idle** state
-
-**Special Case**: Scent beam has no physical item to eat, sheep just sniffs the perfume's position.
-
 ## Level Components
 
-### Goal Zone
+### Win Zone ✅
+**Files:** `WinZoneCheck.cs`
+
+**Implemented:**
 - Trigger volume at level exit
-- Detects player carrying sheep
-- Triggers level complete when both conditions met
+- Detects when sheep enters the zone (checks "Sheep" tag)
+- Triggers level complete event
+- Debug logging for victory condition
 
-### Kill Zone
-- Respawns player if they fall into pits/hazards
-- Can also respawn sheep if needed
+**Planned Enhancements:**
+- Victory UI display
+- Level transition/loading
+- Victory sound effects
+- Player movement freeze on win
 
-### Patrol Path
+### Level Hazards ✅
+**Files:** `BridgeCollapse.cs`
+
+**Implemented:**
+- Bridge collapses when player carrying sheep walks on it
+- Bridge collapses when player AND separate sheep are both on bridge
+- Trigger detection for player and sheep
+- Debug visualization showing detection state
+
+**Configuration:**
+- Requires TWO colliders on bridge:
+  - Normal collider (Is Trigger OFF) - provides walkable surface
+  - Trigger collider (Is Trigger ON) - detects entities
+- Trigger collider must be tall enough to intersect floating player capsule
+
+### Kill Zone & Checkpoint System (Planned - High Priority)
+**Concept:**
+Large plane collider beneath the entire level that detects if player or sheep falls off the map.
+
+**Kill Zone Behavior:**
+- Positioned beneath level (e.g., Y = -10)
+- Large BoxCollider trigger covering entire level area
+- Detects Player OR Sheep falling through
+- Player falls → FAIL STATE → reload checkpoint
+- Any sheep falls → FAIL STATE → reload checkpoint
+
+**Checkpoint System:**
+- Save points throughout level
+- Stores player position, carried items, sheep positions
+- On fail: Reload level state from last checkpoint
+- First checkpoint = level start position
+
+**Files Needed:** `KillZone.cs`, `Checkpoint.cs`, `CheckpointManager.cs`
+
+### Territory Zone System (Planned - High Priority)
+**Concept:**
+A "Territory Zone" (large BoxCollider trigger) marks the guard patrol area. Sheep behavior changes based on whether they're inside or outside this zone.
+
+**Inside Territory Zone:**
+1. Sheep follows attraction (lettuce/scent) normally
+2. After eating, waits 5 seconds for new attractions
+3. If no new attraction appears → returns to home spawn position
+4. If player picks up sheep during 5-second window → sheep "rescued"
+
+**Outside Territory Zone:**
+1. Sheep permanently "freed" from territory memory
+2. After eating → stays at current location
+3. Only moves if new attraction appears
+4. No returning behavior
+
+**Puzzle Design:**
+Player must either:
+- Lure sheep completely out of territory (safe), OR
+- Pick up sheep within 5-second window after eating (risky, near guards)
+
+**Files Needed:** `TerritoryZone.cs`, modifications to `SheepAttraction.cs`
+
+### Patrol Path (Planned)
+- Not yet implemented (using stationary guard for now)
 - Empty GameObject with Transform waypoints as children
-- Guard follows waypoints in sequence
-- Can loop or ping-pong
+- Guard follows waypoints in sequence with loop or ping-pong
 
-## Project Structure Pattern
+**Files Needed:** `PatrolPath.cs`
 
+## Actual Project Structure
+
+```
+Assets/Script/
+├── PlayerController.cs          ← Player movement (walk, run, crouch, jump) ✅
+├── PlayerInteraction.cs         ← Pickup/drop sheep/lettuce with E key ✅
+├── Sheep.cs                     ← Basic sheep state (idle/carried) ✅
+├── SheepAttraction.cs           ← Sheep AI: attraction, walking, eating ✅
+├── Lettuce.cs                   ← Lettuce item pickup/drop mechanics ✅
+├── LettuceGarden.cs             ← Lettuce spawner system ✅
+├── BridgeCollapse.cs            ← Bridge hazard detection ✅
+├── WinZoneCheck.cs              ← Goal zone detection ✅
+└── Guard Scripts/
+    ├── GuardStationary.cs       ← Main guard state machine ✅
+    ├── GuardChase.cs            ← Chase and catch behavior ✅
+    ├── GuardVisionCone.cs       ← Vision detection ✅
+    ├── GuardHearingZone.cs      ← Hearing detection ✅
+    └── FollowingZone.cs         ← General detection zone ✅
+```
+
+**Also in project root:**
+- `CLAUDE.md` - This file (project reference and architecture)
+- `PROJECT_STATUS.md` - Detailed status tracking and completion estimates
+- `SETUP_GUIDE.md` - Setup instructions
+- `SHEEP_PICKUP_SETUP.md` - Sheep pickup configuration guide
+
+### Future Organization
 ```
 Scripts/
 ├── Player/          (Movement, interaction, inventory)
@@ -237,15 +406,31 @@ public class PlayerInteraction : MonoBehaviour
 
 ## Development Priorities
 
-### Current Status (✅ = Complete)
-1. ✅ **Core Movement**: Player movement with camera-relative controls and jumping
-2. ✅ **Basic Interaction**: Player can pickup/carry/drop sheep with E key
-3. ✅ **Player States**: Crouching (Ctrl) and Running (Shift) with speed modifiers
-4. ⏳ **Sheep Behavior**: Basic sheep AI and attraction system (next phase)
-5. ⏳ **Guard AI**: Patrol and chase with detection
-6. ⏳ **Basic Items**: Lettuce and attraction mechanics
-7. ⏳ **Advanced Synergies**: Fan + Perfume interaction
-8. ⏳ **Level Design & Polish**: Build test level, add juice
+### Current Status (✅ = Complete, 🔨 = In Progress, ⏳ = Not Started)
+
+**Core Systems:**
+1. ✅ **Player Movement**: Camera-relative controls, jump, crouch, run, carry speed modifier
+2. ✅ **Player Interaction**: Pickup/carry/drop sheep and lettuce with E key
+3. ✅ **Sheep Basic Mechanics**: Pickup/carry/drop, kinematic physics, ground detection
+4. ✅ **Sheep Attraction System**: Detects lettuce, walks to it, eats it, state machine complete
+5. ✅ **Lettuce System**: Pickup/drop mechanics, gravity physics, spawner system
+6. ✅ **Level Hazards**: Bridge collapse system working
+7. ✅ **Win Condition**: Win zone detects sheep and triggers victory
+8. ✅ **Basic Guard AI**: Stationary guard with vision cone, head rotation, chase, and catch
+
+**In Progress:**
+9. 🔨 **Guard Testing & Polish**: Needs playtesting, visual feedback, parameter tuning
+
+**High Priority - Not Started:**
+10. ⏳ **Territory/Return System**: Sheep return home if inside territory and no new attractions
+11. ⏳ **Kill Zone & Checkpoints**: Fail states for falling off map
+12. ⏳ **Patrolling Guard**: Moving guard with waypoint system
+
+**Medium/Low Priority:**
+13. ⏳ **Advanced Gadgets**: Salad Gun, Fan + Perfume synergy
+14. ⏳ **Level Design**: Complete test level with cover and obstacles
+15. ⏳ **UI Systems**: Detection indicators, inventory display, victory screen
+16. ⏳ **Polish**: Animations, sound effects, particle effects
 
 ### Implementation Phases
 
@@ -261,25 +446,75 @@ public class PlayerInteraction : MonoBehaviour
 - Sheep.cs for basic sheep state (idle/carried)
 - Pickup/carry/drop mechanics working
 - Speed modifier when carrying sheep (70%)
-- Arcade-style (no Rigidbody physics needed)
+- Arcade-style with kinematic Rigidbody
 
-**Phase 3: Sheep Behavior (NEXT)**
-- Add sheep attraction system (lettuce lures sheep)
-- Implement sheep states: Following, Sniffing, Returning
-- CharacterController-based movement for sheep
+**Phase 3: Guard AI - Stationary (COMPLETE ✅)**
+- GuardStationary.cs state machine (Idle/Alert/Chasing)
+- GuardChase.cs for NavMesh pursuit and catching
+- GuardVisionCone.cs for cone-based detection with raycast
+- GuardHearingZone.cs for proximity detection
+- Head rotation animation while in Idle state
+- WinZoneCheck.cs for level completion
+
+**Phase 4: Guard Testing & Polish (CURRENT)**
+- Test guard in realistic gameplay scenario
+- Add visual feedback for guard states (material colors, UI indicators)
+- Tune detection parameters (angles, ranges, delays)
+- Integrate hearing with player movement states (running = loud, sneaking = silent)
+- Build simple test level with cover and obstacles
+
+**Phase 5: Lettuce & Sheep Attraction (COMPLETE ✅)**
+- Lettuce.cs for pickup/drop mechanics
+- LettuceGarden.cs spawner system
+- SheepAttraction.cs state machine (Idle/Sniffing/Walking/Eating)
 - Attraction radius detection
+- Closest lettuce selection
+- Eating and destruction mechanics
 
-**Phase 4: Guard AI**
-- Implement NavMesh patrol system
-- Create detection system (vision cone + hearing)
-- Add chase behavior
-- Integrate with player states
+**Phase 6: Level Hazards (COMPLETE ✅)**
+- BridgeCollapse.cs trigger detection
+- Detects player carrying sheep OR player + sheep separately
+- Debug visualization
 
-**Phase 5: Items & Gadgets**
+**Phase 7: Guard Testing & Polish (CURRENT)**
+- Test guard in realistic gameplay scenario
+- Add visual feedback for guard states (material colors, UI indicators)
+- Tune detection parameters (angles, ranges, delays)
+- Integrate hearing with player movement states (running = loud, sneaking = silent)
+- Build simple test level with cover and obstacles
+
+**Phase 8: Territory System (NEXT - High Priority)**
+- Create TerritoryZone.cs trigger zone
+- Modify SheepAttraction.cs for return-to-home behavior
+- 5-second idle timer after eating
+- Territory exit detection (sheep freed permanently)
+
+**Phase 9: Kill Zones & Checkpoints (High Priority)**
+- KillZone.cs for fall detection
+- CheckpointManager.cs for save/load system
+- Checkpoint.cs for individual save points
+- Fail states and level restart
+
+**Phase 10: Patrolling Guard**
+- Create waypoint patrol system
+- Implement patrol → chase → return-to-patrol flow
+- Add multiple guard variations
+
+**Phase 11: Advanced Gadgets**
 - Create item base classes
-- Implement lettuce attraction
+- Implement Salad Gun (shoots lettuce)
+- Implement Fan (wind zones)
+- Implement Perfume (scent beams)
 - Add gadget synergies (Fan + Perfume)
 - Test interaction flows
+
+**Phase 12: UI & Polish**
+- Detection indicator UI
+- Inventory display
+- Victory screen and level transitions
+- Animations
+- Sound effects
+- Particle effects
 
 ## Future Considerations
 

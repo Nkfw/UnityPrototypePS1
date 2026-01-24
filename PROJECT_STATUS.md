@@ -1,6 +1,6 @@
 # Sheep Stealth Puzzle Game - Current Project Status
 
-**Last Updated:** 2026-01-17
+**Last Updated:** 2026-01-21
 
 ---
 
@@ -203,15 +203,27 @@ Sheep always chooses closest attraction (distance-based only)
 
 ---
 
-### Guard AI System
-**Priority:** High (core gameplay mechanic)
+### Guard AI System ✅ (COMPLETE - Stationary Guard)
+**Status:** Implemented and tested
+**Files:** `GuardStationary.cs`, `GuardChase.cs`, `GuardVisionCone.cs`, `GuardHearingZone.cs`, `FollowingZone.cs`
 
-**Overview:**
-Multiple guard types with different behaviors. Start with Type 1: Stationary Guard.
+**What's Working:**
+- Stationary guard with head rotation (ping-pong pattern)
+- Vision cone detection with line-of-sight raycasting
+- Alert state with configurable delay before chase
+- Chase behavior with NavMesh movement
+- Player catching and state reset
+- Chase cancellation when player escapes line-of-sight
+- Debug gizmos for vision cone visualization
+
+**Needs Polish:**
+- Visual feedback for guard states (material colors)
+- Parameter tuning based on playtesting
+- Hearing zone integration with player movement states
 
 ---
 
-#### **Guard Type 1: Stationary Guard**
+#### **Guard Type 1: Stationary Guard** (IMPLEMENTED ✅)
 
 **Behavior:**
 - Stands in one position (does not move)
@@ -470,9 +482,25 @@ Assets/
 
 ## 🐛 KNOWN ISSUES
 
-**Current Issues:** None
+### Current Issues (To Address Later):
 
-**Recently Fixed:**
+**Sheep Physics:**
+- ⚠️ Sheep colliding with ground while moving (visual glitch - movement works but looks weird)
+- Issue: Likely CharacterController skin width or ground detection causing clipping
+- Priority: Low (cosmetic issue, doesn't break gameplay)
+
+**Sheep Behavior:**
+- ⚠️ Sniff behavior needs more testing
+- Need to verify sniffing delay works correctly in various scenarios
+- Priority: Medium (affects gameplay feel)
+
+**Lettuce Spawner:**
+- ⚠️ LettuceGarden spawns at random positions within radius
+- Need: Specific coordinate spawn points for level design control
+- Current: Random spawn prevents soft-locking but limits puzzle design
+- Priority: Medium (needed for proper level design)
+
+### Recently Fixed:
 - ✅ Kinematic Rigidbody linearVelocity error
 - ✅ Sheep flying to Y=80 (ground layer misconfiguration)
 - ✅ Sheep falling when carried near edge (logic order)
@@ -480,12 +508,15 @@ Assets/
 - ✅ Sheep tilting during movement (rotation constraints)
 - ✅ Lettuce floating when dropped (Rigidbody missing)
 - ✅ Lettuce falling when carried (physics not disabled)
+- ✅ Guard vision cone raycast distance bug (checked full viewDistance instead of actual distance)
+- ✅ Guard state desync when catching player (now properly calls StopChasing)
+- ✅ Head rotation logic inverted (comparison operators fixed)
 
 ---
 
 ## 📊 COMPLETION ESTIMATE
 
-**Overall Project Progress:** ~46%
+**Overall Project Progress:** ~60%
 
 | System | Progress | Status |
 |--------|----------|--------|
@@ -497,7 +528,7 @@ Assets/
 | Lettuce System | 100% | ✅ Complete |
 | Level Hazards (Bridge) | 100% | ✅ Complete |
 | Win Zone (Basic) | 100% | ✅ Complete |
-| Guard AI | 0% | ❌ Not Started |
+| Guard AI (Stationary) | 100% | ✅ Complete |
 | Detection System | 0% | ❌ Not Started |
 | Victory UI & Transitions | 0% | ❌ Not Started |
 | Advanced Gadgets | 0% | ❌ Not Started |

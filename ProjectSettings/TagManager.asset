@@ -7,6 +7,7 @@ TagManager:
   - Sheep
   - Lettuce
   - Bridge
+  - Guard
   layers:
   - Default
   - TransparentFX

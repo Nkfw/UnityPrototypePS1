@@ -2,7 +2,7 @@ using UnityEngine;
 
 // This script goes on Lettuce GameObjects
 // Handles pickup, drop, and throw interactions
-public class Lettuce : MonoBehaviour
+public class Lettuce : MonoBehaviour, ISheepAttraction
 {
     [Header("State")]
     private bool isBeingCarried = false;
@@ -70,5 +70,42 @@ public class Lettuce : MonoBehaviour
         }
 
         Debug.Log($"Lettuce {name} dropped at {dropPosition}");
+    }
+
+    // ===== ISheepAttraction Interface Implementation =====
+
+    public Vector3 GetPosition()
+    {
+        return transform.position;
+    }
+
+    public bool IsAvailable()
+    {
+        // Lettuce is available if it's not being carried by the player
+        return !isBeingCarried;
+    }
+
+    public float GetPriority()
+    {
+        // Default priority for lettuce
+        return 1.0f;
+    }
+
+    public void OnSheepInteract(Sheep sheep)
+    {
+        // Lettuce doesn't need special interaction logic
+        // The destruction is handled by SheepAttraction based on ShouldDestroyAfterInteraction()
+        Debug.Log($"Sheep {sheep.name} is eating lettuce {name}");
+    }
+
+    public bool ShouldDestroyAfterInteraction()
+    {
+        // Lettuce gets eaten and destroyed after sheep interacts with it
+        return true;
+    }
+
+    public GameObject GetGameObject()
+    {
+        return gameObject;
     }
 }
