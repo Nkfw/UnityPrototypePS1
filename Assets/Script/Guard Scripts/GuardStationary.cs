@@ -4,6 +4,7 @@ public class GuardStationary : MonoBehaviour
 {
     [SerializeField] private GuardChase chaseState;
     [SerializeField] private Transform head;
+    [SerializeField] private Transform player; // Reference to player for head tracking
 
     enum GuardState
     {
@@ -17,6 +18,7 @@ public class GuardStationary : MonoBehaviour
     [SerializeField] private float minAngle = -10f;
     [SerializeField] private float maxAngle = 20f;
     [SerializeField] private float headRotationSpeed = 10f;
+    [SerializeField] private float headTrackingSpeed = 5f; // Speed for smooth head tracking during chase
 
     [Header("Alert Settings")]
     [SerializeField] private float alertDelay = 0.5f; // Time before transitioning from Alert to Chasing
@@ -38,6 +40,20 @@ public class GuardStationary : MonoBehaviour
         {
             Debug.LogError("GuardStationary: Head Transform not assigned!", this);
         }
+
+        // Find player if not assigned
+        if (player == null)
+        {
+            GameObject playerObj = GameObject.FindWithTag("Player");
+            if (playerObj != null)
+            {
+                player = playerObj.transform;
+            }
+            else
+            {
+                Debug.LogError("GuardStationary: Player not found! Make sure player has 'Player' tag.", this);
+            }
+        }
     }
 
     private void Update()
@@ -49,13 +65,13 @@ public class GuardStationary : MonoBehaviour
                 break;
 
             case GuardState.Alert:
-                // Stop head rotation during alert
-                // TODO: Play alert animation, look toward player
+                // Look at player during alert
+                LookAtPlayer();
                 break;
 
             case GuardState.Chasing:
-                // Stop head rotation during chase
-                // Chase is handled by GuardChase component
+                // Keep looking at player during chase
+                LookAtPlayer();
                 break;
         }
     }
@@ -78,6 +94,28 @@ public class GuardStationary : MonoBehaviour
         }
 
         head.localRotation = Quaternion.Euler(0f, currentAngle, 0f);
+    }
+
+    private void LookAtPlayer()
+    {
+        if (player == null || head == null) return;
+
+        // Calculate direction from head to player (only on horizontal plane)
+        Vector3 directionToPlayer = player.position - head.position;
+        directionToPlayer.y = 0f; // Ignore vertical difference
+
+        // Calculate target rotation
+        Quaternion targetRotation = Quaternion.LookRotation(directionToPlayer);
+
+        // Convert to local space relative to guard body
+        Quaternion localTargetRotation = Quaternion.Inverse(transform.rotation) * targetRotation;
+
+        // Smoothly rotate head toward player
+        head.localRotation = Quaternion.Slerp(
+            head.localRotation,
+            localTargetRotation,
+            headTrackingSpeed * Time.deltaTime
+        );
     }
 
     // ===== PUBLIC METHODS - Called by GuardVisionCone =====
@@ -121,6 +159,9 @@ public class GuardStationary : MonoBehaviour
 
     public void StopChasing()
     {
+        // Cancel any pending delayed StartChasing() calls
+        CancelInvoke(nameof(StartChasing));
+
         currentGuardState = GuardState.Guarding;
         chaseState.StopChase();
         Debug.Log("Guard: Stopped chasing. Returning to Guarding state.");

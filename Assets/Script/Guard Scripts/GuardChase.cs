@@ -1,5 +1,6 @@
 
 using UnityEngine;
+using System.Collections;
 
 public class GuardChase : MonoBehaviour
 {
@@ -13,7 +14,6 @@ public class GuardChase : MonoBehaviour
     private GuardStationary guardStationary;
     private Vector3 velocity;
     private float gravity = -9.81f;
-
 
     void Awake()
     {
@@ -46,6 +46,7 @@ public class GuardChase : MonoBehaviour
             velocity.y += gravity * Time.deltaTime;
         }
         controller.Move(velocity * Time.deltaTime);
+
         if (isChase == false)
             return;
 
@@ -97,20 +98,27 @@ public class GuardChase : MonoBehaviour
     }
     void CatchPlayer()
     {
-        Debug.Log("Guard caught the player! Player has lost!");
+        Debug.Log("Guard caught the player!");
+
+        // Stop chasing immediately
+        isChase = false;
 
         // Notify GuardStationary to sync state
         if (guardStationary != null)
         {
             guardStationary.StopChasing();
         }
+
+        // Tell DeathManager that player died by guard catching
+        // CheckpointManager will automatically restore guard position when loading checkpoint
+        if (DeathManager.Instance != null)
+        {
+            DeathManager.Instance.OnDeath(DeathManager.DeathCause.GuardCaught);
+        }
         else
         {
-            // Fallback if guardStationary reference is missing
-            isChase = false;
+            Debug.LogError("Guard: DeathManager.Instance is null! Make sure DeathManager exists in scene.");
         }
-
-        // TODO: Trigger game over, respawn player, play animation, etc.
     }
 }
 

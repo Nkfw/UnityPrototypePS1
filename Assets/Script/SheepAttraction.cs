@@ -20,6 +20,7 @@ public class SheepAttraction : MonoBehaviour
 
     [Header("Debug")]
     [SerializeField] private bool showDebugGizmos = true;
+    [SerializeField] private bool showGroundDebug = false; // Enable detailed ground positioning logs
 
     // Current state
     public enum SheepState
@@ -37,6 +38,10 @@ public class SheepAttraction : MonoBehaviour
     private Rigidbody rb;
     private Vector3 homePosition; // Where to return when in territory
 
+    // Collider info for ground positioning
+    private CapsuleCollider sheepCapsule;
+    private float colliderBottomOffset; // How far collider extends below transform origin
+
     // Public property to expose current state (for SheepFollowingZone)
     public SheepState CurrentState => currentState;
 
@@ -50,6 +55,25 @@ public class SheepAttraction : MonoBehaviour
         {
             rb.isKinematic = true;
             rb.useGravity = false;
+        }
+
+        // Get collider info for proper ground positioning
+        sheepCapsule = GetComponent<CapsuleCollider>();
+        if (sheepCapsule != null)
+        {
+            // Use the collider's actual bounds to calculate offset
+            // Bounds are already in world space and account for scale automatically
+            Bounds colliderBounds = sheepCapsule.bounds;
+
+            // Calculate how far the bottom of the collider is below the transform position
+            // transform.position.y is where the transform pivot is
+            // bounds.min.y is the bottom of the collider in world space
+            colliderBottomOffset = transform.position.y - colliderBounds.min.y;
+        }
+        else
+        {
+            Debug.LogWarning($"[SHEEP COLLIDER] {name} - No CapsuleCollider found! Using default offset.");
+            colliderBottomOffset = 0.5f; // Fallback value
         }
     }
 
@@ -67,8 +91,9 @@ public class SheepAttraction : MonoBehaviour
         }
 
         // Check if sheep is standing on ground (only when NOT carried)
+        // Ignore trigger colliders for ground detection
         RaycastHit groundChecker;
-        if (!Physics.Raycast(transform.position, Vector3.down, out groundChecker, 0.5f, groundLayer))
+        if (!Physics.Raycast(transform.position, Vector3.down, out groundChecker, 0.5f, groundLayer, QueryTriggerInteraction.Ignore))
         {
             // No ground below - enable falling
             if (rb != null && rb.isKinematic)
@@ -107,8 +132,6 @@ public class SheepAttraction : MonoBehaviour
         // Clear target and reset to idle
         targetAttraction = null;
         currentState = SheepState.Idle;
-
-        Debug.Log($"Sheep {name}: State reset (picked up)");
     }
 
     private void LookForAttractions()
@@ -122,8 +145,6 @@ public class SheepAttraction : MonoBehaviour
         {
             return;
         }
-
-        Debug.Log($"Sheep {name}: Found {allAttractions.Length} total attractions in scene");
 
         // Find closest available attraction within detection radius
         ISheepAttraction closestAttraction = null;
@@ -159,19 +180,13 @@ public class SheepAttraction : MonoBehaviour
         if (closestAttraction != null)
         {
             targetAttraction = closestAttraction;
-            Debug.Log($"Sheep {name}: Selected attraction '{closestAttraction.GetGameObject().name}' at distance {closestDistance:F2}");
             StartCoroutine(SniffBeforeMoving());
-        }
-        else
-        {
-            Debug.Log($"Sheep {name}: No valid attractions found within detection radius");
         }
     }
 
     private IEnumerator SniffBeforeMoving()
     {
         currentState = SheepState.Sniffing;
-        Debug.Log($"Sheep {name}: Sniffing attraction...");
 
         // Wait for sniff delay
         yield return new WaitForSeconds(sniffDelay);
@@ -186,7 +201,6 @@ public class SheepAttraction : MonoBehaviour
 
         // Start walking
         currentState = SheepState.Walking;
-        Debug.Log($"Sheep {name}: Walking to attraction!");
     }
 
     private void MoveTowardTarget()
@@ -194,7 +208,6 @@ public class SheepAttraction : MonoBehaviour
         // Check if attraction was destroyed or became unavailable
         if (targetAttraction == null || !targetAttraction.IsAvailable())
         {
-            Debug.Log($"Sheep {name}: Attraction no longer available, stopping pursuit");
             targetAttraction = null;
             currentState = SheepState.Idle;
             return;
@@ -218,16 +231,25 @@ public class SheepAttraction : MonoBehaviour
 
         // Raycast down to find ground level
         // Start from a high point to ensure we can find ground even if sheep is elevated
+        // QueryTriggerInteraction.Ignore prevents hitting trigger colliders (like bridge triggers)
         Vector3 rayStart = new Vector3(newPosition.x, transform.position.y + 5f, newPosition.z);
-        bool hitGround = Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, groundRaycastDistance, groundLayer);
+        bool hitGround = Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, groundRaycastDistance, groundLayer, QueryTriggerInteraction.Ignore);
 
         if (hitGround)
         {
-            // Snap to ground with slight offset
-            newPosition.y = hit.point.y + 0.1f;
+            // Snap to ground with collider-aware positioning
+            // Add colliderBottomOffset so the collider's bottom sits on the ground
+            newPosition.y = hit.point.y + colliderBottomOffset + 0.05f; // 0.05f = small skin width
 
             // Debug visualization
             Debug.DrawLine(rayStart, hit.point, Color.green, 0.1f);
+
+            // Detailed ground positioning debug
+            if (showGroundDebug)
+            {
+                Debug.Log($"[GROUND] {name} - Hit: {hit.point.y:F2}, Transform will be: {newPosition.y:F2}, " +
+                          $"Offset: {colliderBottomOffset:F2}, Collider on: {hit.collider.name}");
+            }
         }
         else
         {
@@ -246,9 +268,9 @@ public class SheepAttraction : MonoBehaviour
 
             // Try raycast from much higher with longer distance
             Vector3 emergencyRayStart = new Vector3(newPosition.x, 100f, newPosition.z);
-            if (Physics.Raycast(emergencyRayStart, Vector3.down, out RaycastHit emergencyHit, 150f, groundLayer))
+            if (Physics.Raycast(emergencyRayStart, Vector3.down, out RaycastHit emergencyHit, 150f, groundLayer, QueryTriggerInteraction.Ignore))
             {
-                newPosition.y = emergencyHit.point.y + 0.1f;
+                newPosition.y = emergencyHit.point.y + colliderBottomOffset + 0.05f;
                 Debug.Log($"Sheep {name}: Emergency ground found at Y={emergencyHit.point.y}");
             }
             else
@@ -276,7 +298,6 @@ public class SheepAttraction : MonoBehaviour
     private IEnumerator InteractWithTarget()
     {
         currentState = SheepState.Eating;
-        Debug.Log($"Sheep {name}: Interacting with attraction...");
 
         // Notify the attraction that sheep is interacting
         if (targetAttraction != null)
@@ -292,12 +313,7 @@ public class SheepAttraction : MonoBehaviour
         {
             if (targetAttraction.ShouldDestroyAfterInteraction())
             {
-                Debug.Log($"Sheep {name}: Finished interacting! Destroying attraction.");
                 Destroy(targetAttraction.GetGameObject());
-            }
-            else
-            {
-                Debug.Log($"Sheep {name}: Finished interacting! Attraction remains.");
             }
 
             targetAttraction = null;
@@ -313,7 +329,14 @@ public class SheepAttraction : MonoBehaviour
     {
         homePosition = home;
         currentState = SheepState.Returning;
-        Debug.Log($"Sheep {name}: Starting return home to {home}");
+    }
+
+    // Called by CheckpointManager when restoring sheep from checkpoint
+    // Resets sheep to Idle state so it can detect attractions again
+    public void ResetToIdleState()
+    {
+        currentState = SheepState.Idle;
+        targetAttraction = null;
     }
 
     private void ReturnToHome()
@@ -324,7 +347,6 @@ public class SheepAttraction : MonoBehaviour
         // If attraction found, state changed to Sniffing, exit
         if (currentState != SheepState.Returning)
         {
-            Debug.Log($"Sheep {name}: Found attraction while returning, canceling return!");
             return;
         }
 
@@ -335,7 +357,6 @@ public class SheepAttraction : MonoBehaviour
         if (distanceToHome < reachDistance)
         {
             currentState = SheepState.Idle;
-            Debug.Log($"Sheep {name}: Reached home!");
             return;
         }
 

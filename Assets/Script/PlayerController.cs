@@ -12,6 +12,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float crouchSpeedMultiplier = 0.5f; // Speed reduction when crouching
     [SerializeField] private float runSpeedMultiplier = 2.2f;
     [SerializeField] private float carrySpeedMultiplier = 0.7f; // Speed reduction when carrying sheep
+    [SerializeField] private Animator playerAnimator;
 
     // Current input from WASD or gamepad
     public Vector2 moveInput;
@@ -34,6 +35,8 @@ public class PlayerController : MonoBehaviour
     private void Start()
     {
         characterController = GetComponent<CharacterController>();
+
+        playerAnimator = GetComponentInChildren<Animator>();
 
         // Cache the main camera transform for camera-relative movement
         if (Camera.main != null)
@@ -60,6 +63,12 @@ public class PlayerController : MonoBehaviour
         {
             // Calculate jump velocity using: v = sqrt(2 * jumpHeight * gravity)
             velocity.y = Mathf.Sqrt(jumpHeight * 2f * -gravity);
+
+            // Trigger jump animation
+            if (playerAnimator != null)
+            {
+                playerAnimator.SetBool("IsJumping", true);
+            }
         }
     }
 
@@ -92,8 +101,34 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
+        // animation for walking and running
+        float animationSpeed = 0f;
+
+        if (moveInput.magnitude > 0.1f)
+        {
+            if (isRunning)
+            {
+                animationSpeed = 1f;
+            }
+            else
+            {
+                animationSpeed = 0.3f;
+            } 
+        }
+
+        // jumping animation
+
+        
+
+        if (playerAnimator != null)
+        {
+            playerAnimator.SetFloat("Speed", animationSpeed);
+        }
+
         MovePlayer();
+
         RotatePlayer();
+
         ApplyGravity();
     }
 
@@ -177,6 +212,16 @@ public class PlayerController : MonoBehaviour
         if (characterController.isGrounded && velocity.y < 0)
         {
             velocity.y = -2f;
+
+            // Reset jump animation when landed
+            if (playerAnimator != null)
+            {
+                bool wasJumping = playerAnimator.GetBool("IsJumping");
+                if (wasJumping)
+                {
+                    playerAnimator.SetBool("IsJumping", false);
+                }
+            }
         }
 
         // Apply gravity acceleration

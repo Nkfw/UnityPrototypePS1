@@ -14,6 +14,9 @@ public class Sheep : MonoBehaviour
     // Original parent before being picked up (usually null)
     private Transform originalParent;
 
+    // Store original scale to prevent distortion when parenting
+    private Vector3 originalScale;
+
     public bool IsBeingCarried => isBeingCarried;
 
     private void Awake()
@@ -37,10 +40,24 @@ public class Sheep : MonoBehaviour
         // Store original parent
         originalParent = transform.parent;
 
+        // Store original world scale BEFORE parenting (critical for preventing distortion)
+        originalScale = transform.lossyScale;
+
         // Parent sheep to carry position
         transform.SetParent(carryPosition);
         transform.localPosition = Vector3.zero; // Center on carry position
         transform.localRotation = Quaternion.identity; // Reset rotation
+
+        // Restore original scale as local scale to counteract parent scale inheritance
+        // This prevents the sheep from being scaled by the parent's scale
+        if (carryPosition.lossyScale.x != 0 && carryPosition.lossyScale.y != 0 && carryPosition.lossyScale.z != 0)
+        {
+            transform.localScale = new Vector3(
+                originalScale.x / carryPosition.lossyScale.x,
+                originalScale.y / carryPosition.lossyScale.y,
+                originalScale.z / carryPosition.lossyScale.z
+            );
+        }
 
         // Disable physics while being carried
         if (rb != null)
@@ -65,6 +82,9 @@ public class Sheep : MonoBehaviour
 
         // Unparent sheep
         transform.SetParent(originalParent);
+
+        // Restore original scale after unparenting
+        transform.localScale = originalScale;
 
         // Set position on ground
         transform.position = dropPosition;

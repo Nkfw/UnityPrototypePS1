@@ -1,26 +1,28 @@
 # Sheep Stealth Puzzle Game - Project Reference
 
-**Last Updated:** 2026-01-24
+**Last Updated:** 2026-01-28
 
 ## Quick Status Overview
 
 **What's Playable Right Now:**
 - ✅ Player movement (walk, run, crouch, jump) with camera-relative controls
+- ✅ Player animations (idle, walk, run, jump) fully implemented with Animator Controller
 - ✅ Pick up and carry sheep/lettuce, drop them
 - ✅ Sheep AI attracts to lettuce, walks to it, eats it
-- ✅ Lettuce spawner maintains resource availability
+- ✅ Lettuce spawner maintains resource availability with predefined spawn points
 - ✅ Bridge hazards collapse when conditions met
-- ✅ Stationary guard with vision cone detection and chase
+- ✅ Stationary guard with vision cone detection, chase, and HEAD TRACKING
+- ✅ Guard head rotates to scan during patrol, locks onto player during chase
 - ✅ Win zone completes level when sheep enters
+- ✅ Territory/return system (sheep return home if inside territory and no new attractions)
+- ✅ Kill zones and checkpoints (full death/respawn system with guard position reset)
 
 **What's Missing for Core Gameplay:**
-- ⏳ Territory/return system (sheep go back home if not rescued quickly)
-- ⏳ Kill zones and checkpoints (fail states for falling)
 - ⏳ Patrolling guards (currently only stationary)
 - ⏳ Advanced gadgets (Salad Gun, Fan, Perfume)
 - ⏳ UI polish and visual feedback
 
-**Project Completion:** ~60% (core mechanics done, needs systems integration and polish)
+**Project Completion:** ~78% (core mechanics complete, guard AI polished, needs patrolling guards)
 
 ---
 
@@ -117,6 +119,14 @@ Uses **Cinemachine FreeLook** for third-person camera:
 - **Running**: Fast speed, loud (guard hears)
 - **Carrying**: Holding sheep, reduced speed
 
+**Animation System (COMPLETE ✅):**
+- **Animator Controller** with Speed (Float) and IsJumping (Bool) parameters
+- **Idle Animation**: Plays when Speed = 0
+- **Walk/Run Animation**: Blend tree based on Speed value (0.3 = walk, 1.0 = run)
+- **Jump Animation**: Triggered when IsJumping = true, returns to idle/walk when landed
+- Smooth transitions with minimal Exit Time for responsive controls
+- All animations integrated with PlayerController movement states
+
 ### Sheep States
 
 **Files:** `Sheep.cs`, `SheepAttraction.cs`
@@ -138,6 +148,7 @@ Uses **Cinemachine FreeLook** for third-person camera:
 **Pickup Mechanics:**
 - When picked up: collider disabled, parented to player's carry position
 - When dropped: unparented, collider re-enabled, kinematic physics
+- **Scale preservation**: Stores original scale before parenting, restores after to prevent distortion
 
 **Physics Setup:**
 - Uses **kinematic Rigidbody** for:
@@ -145,27 +156,46 @@ Uses **Cinemachine FreeLook** for third-person camera:
   - Smooth movement via `Rigidbody.MovePosition()`
   - Arcade-style physics (no bouncing/sliding)
 - Rotation constraints: X/Z locked to prevent tilting
+- **Advanced ground positioning**:
+  - Bounds-based offset calculation in `Awake()` for scale independence
+  - All raycasts use `QueryTriggerInteraction.Ignore` to avoid trigger colliders
+  - Smooth terrain following with configurable skin width
+  - Works correctly on flat ground, bridges, and varied terrain heights
 - Ground detection with emergency fallback
 - Falls when ground disappears
 
-**Missing Features:**
-- **Territory/Return System** (planned): Sheep should return to home position if inside territory zone and no new attractions appear within 5 seconds after eating
+**Territory/Return System (COMPLETE):**
+- Sheep returns to home position if inside territory zone and no new attractions
+- 5-second thinking timer after eating
+- Territory exit permanently "frees" sheep
 
 ### Guard States (Stationary Version)
 
-Currently implemented as a **stationary guard** that watches over sheep:
+Currently implemented as a **stationary guard** with full 3D model and head tracking:
 
-- **Idle**: Head slowly rotates left/right scanning area, vision cone active
-- **Alert**: Player detected in vision cone, brief delay before chase
-- **Chasing**: NavMesh pursuit of player, catches player on contact
-- **Return**: (Not yet implemented - guard continues chasing until player escapes)
+- **Guarding (Idle)**: Head slowly rotates left/right scanning area (Y-axis rotation), vision cone active
+- **Alert**: Player detected in vision cone → Head stops scanning and **locks onto player** → Brief 0.5s delay before chase
+- **Chasing**: CharacterController-based pursuit of player, **head continuously tracks player** during movement, catches player on contact
+- **Death/Respawn**: Guard returns to **initial spawn position** (not checkpoint position) and resets to Guarding state
 
 **Guard Components:**
-- `GuardStationary.cs`: Main state machine managing Idle/Alert/Chasing states with head rotation
-- `GuardChase.cs`: Handles NavMesh-based pursuit and player catching
+- `GuardStationary.cs`: Main state machine (Guarding/Alert/Chasing) with head rotation and player tracking
+  - `RotateHead()`: Oscillating scan rotation during Guarding state
+  - `LookAtPlayer()`: Smooth head tracking during Alert/Chasing states
+  - `CancelInvoke()`: Prevents chase restart after death/respawn
+- `GuardChase.cs`: Handles CharacterController-based pursuit and player catching
+  - Integrates with DeathManager for death sequence
+  - Position restored by CheckpointManager (not self-managed)
 - `GuardVisionCone.cs`: Cone-shaped detection using angle check + raycast for line-of-sight
 - `GuardHearingZone.cs`: Spherical trigger for hearing detection (not yet connected to player states)
 - `FollowingZone.cs`: General detection zone trigger
+
+**Head Tracking System:**
+- Guard has separate head Transform (part of 3D model hierarchy)
+- During Guarding: Head rotates left/right within min/max angle range
+- During Alert/Chase: Head smoothly tracks player position using Quaternion.Slerp
+- Rotation in local space (relative to guard body)
+- Configurable tracking speed (default: 5)
 
 **Future Guard Types:**
 - **Patrol**: Walking between waypoints (planned)
@@ -188,9 +218,9 @@ Currently implemented as a **stationary guard** that watches over sheep:
 - Not yet integrated with player movement states (running/sneaking)
 
 **State-Based Detection** (`GuardStationary.cs`):
-- Idle: Scans area with rotating head, checks vision cone continuously
-- Alert: Brief delay when player spotted before transitioning to chase
-- Chasing: Active pursuit via NavMesh
+- Guarding: Scans area with rotating head (oscillates between minAngle and maxAngle), checks vision cone continuously
+- Alert: Head stops scanning and locks onto player position, 0.5s delay before transitioning to chase
+- Chasing: Active pursuit via CharacterController, head continuously tracks player during movement
 
 ### Planned Detection Features
 
@@ -281,34 +311,68 @@ Fan (active) → Perfume (idle) → Scent Beam (extends in wind direction) → S
   - Trigger collider (Is Trigger ON) - detects entities
 - Trigger collider must be tall enough to intersect floating player capsule
 
-### Kill Zone & Checkpoint System (Planned - High Priority)
-**Concept:**
-Large plane collider beneath the entire level that detects if player or sheep falls off the map.
+### Kill Zone & Checkpoint System ✅
+**Files:** `KillZone.cs`, `Checkpoint.cs`, `CheckpointManager.cs`, `DeathManager.cs`, `ScreenFader.cs`
 
-**Kill Zone Behavior:**
-- Positioned beneath level (e.g., Y = -10)
-- Large BoxCollider trigger covering entire level area
-- Detects Player OR Sheep falling through
-- Player falls → FAIL STATE → reload checkpoint
-- Any sheep falls → FAIL STATE → reload checkpoint
+**Implemented:**
+- Large plane trigger beneath level detects player/sheep falling
+- Player falls → Death sequence → Respawn at checkpoint
+- Sheep falls → Instant fail → Level reloads from checkpoint
+- **Guard catches player** → Death sequence → Respawn at checkpoint
+- Screen fades to black during death/respawn
+- Full game state restoration (player + all sheep + **all guards**)
+- Sheep Rigidbody velocity reset to prevent infinite falling
+- Sheep state machine reset to Idle after respawn
+- **Guards restore to INITIAL spawn positions** (not checkpoint positions)
+- Multiple checkpoints per level supported
+- First checkpoint auto-saves on level start
+
+**Death Manager:**
+- Singleton pattern managing all death events
+- Event-based system with DeathCause enum (PlayerFell, SheepFell, **GuardCaught**, Explosion, Trap)
+- Coroutine-based sequence: Freeze player → Fade to black → Load checkpoint → Fade from black → Unfreeze
+- Extensible for future death types
 
 **Checkpoint System:**
-- Save points throughout level
-- Stores player position, carried items, sheep positions
-- On fail: Reload level state from last checkpoint
-- First checkpoint = level start position
+- Trigger zones throughout level
+- Saves player position, rotation, all sheep positions
+- **Does NOT save guard positions** (guards always return to spawn)
+- **Guards stored separately in initialGuardPositions dictionary** (never changes after level start)
+- Starting checkpoint auto-activates
+- Visual gizmos: Yellow (inactive) → Green (activated)
+- Prevents double-activation with state tracking
 
-**Files Needed:** `KillZone.cs`, `Checkpoint.cs`, `CheckpointManager.cs`
+**Guard Restoration System:**
+- Guards always restore to **initial spawn position**, not current position
+- Prevents "guard camping checkpoint" scenarios
+- CharacterController disabled during position restoration (prevents movement interference)
+- Guard state machine reset to Guarding
+- Pending Invoke() calls cancelled (prevents chase restart)
+- Proper state synchronization between GuardStationary and GuardChase
 
-### Territory Zone System (Planned - High Priority)
-**Concept:**
-A "Territory Zone" (large BoxCollider trigger) marks the guard patrol area. Sheep behavior changes based on whether they're inside or outside this zone.
+**Screen Fader:**
+- Canvas with CanvasGroup alpha control
+- Smooth fade to/from black transitions
+- Configurable fade durations and hold time
+- Coroutine-based animation system
+
+### Territory Zone System ✅
+**Files:** `TerritoryZone.cs`, `SheepFollowingZone.cs`, modifications to `SheepAttraction.cs`
+
+**Implemented:**
+- Territory zone marks guard patrol area (BoxCollider trigger)
+- Sheep has "Returning" state added to state machine
+- Idle timer counts down after eating (default: 5 seconds)
+- Sheep returns to home position if no new attractions appear
+- Territory exit permanently "frees" sheep (no more returning)
+- Return cancelled automatically if new lettuce appears
 
 **Inside Territory Zone:**
 1. Sheep follows attraction (lettuce/scent) normally
-2. After eating, waits 5 seconds for new attractions
-3. If no new attraction appears → returns to home spawn position
-4. If player picks up sheep during 5-second window → sheep "rescued"
+2. After eating, enters Idle state with 5-second timer
+3. If timer expires → Returns to home spawn position
+4. If player picks up sheep → Timer resets, sheep "rescued"
+5. If new lettuce appears → Return cancelled, goes to lettuce
 
 **Outside Territory Zone:**
 1. Sheep permanently "freed" from territory memory
@@ -320,8 +384,6 @@ A "Territory Zone" (large BoxCollider trigger) marks the guard patrol area. Shee
 Player must either:
 - Lure sheep completely out of territory (safe), OR
 - Pick up sheep within 5-second window after eating (risky, near guards)
-
-**Files Needed:** `TerritoryZone.cs`, modifications to `SheepAttraction.cs`
 
 ### Patrol Path (Planned)
 - Not yet implemented (using stationary guard for now)
@@ -337,10 +399,17 @@ Assets/Script/
 ├── PlayerController.cs          ← Player movement (walk, run, crouch, jump) ✅
 ├── PlayerInteraction.cs         ← Pickup/drop sheep/lettuce with E key ✅
 ├── Sheep.cs                     ← Basic sheep state (idle/carried) ✅
-├── SheepAttraction.cs           ← Sheep AI: attraction, walking, eating ✅
+├── SheepAttraction.cs           ← Sheep AI: attraction, walking, eating, returning ✅
+├── SheepFollowingZone.cs        ← Territory timer and return trigger ✅
 ├── ISheepAttraction.cs          ← Interface for all attraction types ✅
 ├── BridgeCollapse.cs            ← Bridge hazard detection ✅
 ├── WinZoneCheck.cs              ← Goal zone detection ✅
+├── TerritoryZone.cs             ← Territory boundary detection ✅
+├── DeathManager.cs              ← Central death handler (singleton) ✅
+├── CheckpointManager.cs         ← Save/load game state ✅
+├── Checkpoint.cs                ← Checkpoint trigger zones ✅
+├── KillZone.cs                  ← Fall detection trigger ✅
+├── ScreenFader.cs               ← Screen fade effects ✅
 ├── Lettuces/
 │   ├── Lettuce.cs               ← Lettuce item (implements ISheepAttraction) ✅
 │   └── LettuceGarden.cs         ← Lettuce spawner system ✅
@@ -357,6 +426,8 @@ Assets/Script/
 - `PROJECT_STATUS.md` - Detailed status tracking and completion estimates
 - `SETUP_GUIDE.md` - Setup instructions
 - `SHEEP_PICKUP_SETUP.md` - Sheep pickup configuration guide
+- `TERRITORY_SYSTEM_GUIDE.md` - Territory/return system setup
+- `KILLZONE_CHECKPOINT_GUIDE.md` - Death/checkpoint system setup
 
 ### Future Organization
 ```
@@ -373,6 +444,13 @@ Scripts/
 
 - **Component-based architecture**: Each script has one clear responsibility
 - **Granular separation**: Independent scripts that communicate via references
+- **Scale-independent positioning**: Use collider bounds for reliable positioning regardless of scale
+- **Trigger-aware raycasting**: Use `QueryTriggerInteraction.Ignore` for ground detection to avoid hitting detection triggers
+- **Physics-based calculations**: Prefer collider dimensions over hardcoded offsets
+- **CharacterController teleportation**: Disable/enable CharacterController when teleporting to clear internal state
+- **Invoke cancellation**: Always cancel pending Invoke() calls when resetting state machines
+- **Initial position storage**: Store entity spawn positions separately from checkpoint data for predictable resets
+- **Head tracking in local space**: Calculate rotations relative to parent transform for proper hierarchy support
 - **Use ScriptableObjects** for entity settings (guard ranges, sheep speeds)
 - **Centralized Detection System** (singleton for simplicity in prototype)
 - **Interface-based synergies** (IFanInteractable for clean gadget interactions)
@@ -414,27 +492,28 @@ public class PlayerInteraction : MonoBehaviour
 
 **Core Systems:**
 1. ✅ **Player Movement**: Camera-relative controls, jump, crouch, run, carry speed modifier
-2. ✅ **Player Interaction**: Pickup/carry/drop sheep and lettuce with E key
-3. ✅ **Sheep Basic Mechanics**: Pickup/carry/drop, kinematic physics, ground detection
-4. ✅ **Sheep Attraction System**: Detects lettuce, walks to it, eats it, state machine complete
-5. ✅ **Lettuce System**: Pickup/drop mechanics, gravity physics, spawner system
-6. ✅ **Level Hazards**: Bridge collapse system working
-7. ✅ **Win Condition**: Win zone detects sheep and triggers victory
-8. ✅ **Basic Guard AI**: Stationary guard with vision cone, head rotation, chase, and catch
-
-**In Progress:**
-9. 🔨 **Guard Testing & Polish**: Needs playtesting, visual feedback, parameter tuning
+2. ✅ **Player Animations**: Idle, walk, run, jump animations with Animator Controller (Speed + IsJumping parameters)
+3. ✅ **Player Interaction**: Pickup/carry/drop sheep and lettuce with E key
+4. ✅ **Sheep Basic Mechanics**: Pickup/carry/drop, kinematic physics, ground detection
+5. ✅ **Sheep Attraction System**: Detects lettuce, walks to it, eats it, returns home, state machine complete
+6. ✅ **Lettuce System**: Pickup/drop mechanics, gravity physics, spawner with predefined points
+7. ✅ **Level Hazards**: Bridge collapse system working
+8. ✅ **Win Condition**: Win zone detects sheep and triggers victory
+9. ✅ **Stationary Guard AI**: Vision cone, head rotation, chase, catch, and **head tracking**
+10. ✅ **Guard Head Tracking**: Head scans during patrol, locks onto player during alert/chase
+11. ✅ **Guard Death Integration**: Proper respawn to initial position, state machine reset, CharacterController handling
+12. ✅ **Territory/Return System**: Sheep return home if inside territory and no new attractions
+13. ✅ **Kill Zone & Checkpoints**: Full death/respawn system with screen fades and guard restoration
 
 **High Priority - Not Started:**
-10. ⏳ **Territory/Return System**: Sheep return home if inside territory and no new attractions
-11. ⏳ **Kill Zone & Checkpoints**: Fail states for falling off map
-12. ⏳ **Patrolling Guard**: Moving guard with waypoint system
+14. ⏳ **Patrolling Guard**: Moving guard with waypoint system
+15. ⏳ **Guard Visual Polish**: Material changes for states, UI indicators
 
 **Medium/Low Priority:**
-13. ⏳ **Advanced Gadgets**: Salad Gun, Fan + Perfume synergy
-14. ⏳ **Level Design**: Complete test level with cover and obstacles
-15. ⏳ **UI Systems**: Detection indicators, inventory display, victory screen
-16. ⏳ **Polish**: Animations, sound effects, particle effects
+14. ⏳ **Advanced Gadgets**: Salad Gun, Fan + Perfume synergy
+15. ⏳ **Level Design**: Complete test level with cover and obstacles
+16. ⏳ **UI Systems**: Detection indicators, inventory display, victory screen
+17. ⏳ **Polish**: Sound effects, particle effects
 
 ### Implementation Phases
 
@@ -444,6 +523,9 @@ public class PlayerInteraction : MonoBehaviour
 - Jump mechanics
 - Cinemachine FreeLook camera integration
 - Crouch (Ctrl) and Run (Shift) states with speed multipliers
+- Animator Controller with idle, walk, run, jump animations
+- Animation parameters: Speed (Float) and IsJumping (Bool)
+- Smooth animation transitions with minimal Exit Time
 
 **Phase 2: Interaction (COMPLETE ✅)**
 - PlayerInteraction.cs for E key pickup/drop
@@ -460,51 +542,60 @@ public class PlayerInteraction : MonoBehaviour
 - Head rotation animation while in Idle state
 - WinZoneCheck.cs for level completion
 
-**Phase 4: Guard Testing & Polish (CURRENT)**
-- Test guard in realistic gameplay scenario
-- Add visual feedback for guard states (material colors, UI indicators)
-- Tune detection parameters (angles, ranges, delays)
-- Integrate hearing with player movement states (running = loud, sneaking = silent)
-- Build simple test level with cover and obstacles
-
-**Phase 5: Lettuce & Sheep Attraction (COMPLETE ✅)**
+**Phase 4: Lettuce & Sheep Attraction (COMPLETE ✅)**
 - Lettuce.cs for pickup/drop mechanics
-- LettuceGarden.cs spawner system
+- LettuceGarden.cs spawner system with predefined spawn points
 - SheepAttraction.cs state machine (Idle/Sniffing/Walking/Eating)
 - Attraction radius detection
 - Closest lettuce selection
 - Eating and destruction mechanics
 
-**Phase 6: Level Hazards (COMPLETE ✅)**
+**Phase 5: Level Hazards (COMPLETE ✅)**
 - BridgeCollapse.cs trigger detection
 - Detects player carrying sheep OR player + sheep separately
 - Debug visualization
 
-**Phase 7: Guard Testing & Polish (CURRENT)**
+**Phase 6: Territory System (COMPLETE ✅)**
+- Created TerritoryZone.cs trigger zone
+- Created SheepFollowingZone.cs for timer management
+- Modified SheepAttraction.cs with "Returning" state
+- 5-second idle timer after eating (configurable)
+- Return-to-home behavior using moveSpeed
+- Territory exit detection (sheep freed permanently)
+- Return cancelled if new lettuce appears
+
+**Phase 7: Kill Zones & Checkpoints (COMPLETE ✅)**
+- DeathManager.cs singleton for centralized death handling
+- KillZone.cs for fall detection (player and sheep)
+- CheckpointManager.cs for save/load game state
+- Checkpoint.cs for individual checkpoint triggers
+- ScreenFader.cs for screen fade effects
+- Coroutine-based death sequence with proper timing
+- Sheep velocity reset and state machine reset on respawn
+- Full game state restoration (player + all sheep)
+
+**Phase 8: Guard Head Tracking & Death System (COMPLETE ✅)**
+- Added 3D model with separate head Transform
+- Implemented head rotation during Guarding state (oscillating scan)
+- Implemented LookAtPlayer() for Alert/Chase states (smooth tracking)
+- Fixed guard respawn to use initial spawn positions (not checkpoint positions)
+- Added CharacterController disable/enable during teleportation
+- Fixed Invoke() cancellation to prevent chase restart after death
+- Integrated guard with DeathManager and CheckpointManager
+
+**Phase 9: Patrolling Guard (NEXT - High Priority)**
+- Create waypoint patrol system
+- Implement patrol → chase → return-to-patrol flow
+- Add multiple guard variations
+
+**Phase 10: Guard Visual Polish**
 - Test guard in realistic gameplay scenario
 - Add visual feedback for guard states (material colors, UI indicators)
 - Tune detection parameters (angles, ranges, delays)
 - Integrate hearing with player movement states (running = loud, sneaking = silent)
 - Build simple test level with cover and obstacles
 
-**Phase 8: Territory System (NEXT - High Priority)**
-- Create TerritoryZone.cs trigger zone
-- Modify SheepAttraction.cs for return-to-home behavior
-- 5-second idle timer after eating
-- Territory exit detection (sheep freed permanently)
-
-**Phase 9: Kill Zones & Checkpoints (High Priority)**
-- KillZone.cs for fall detection
-- CheckpointManager.cs for save/load system
-- Checkpoint.cs for individual save points
-- Fail states and level restart
-
-**Phase 10: Patrolling Guard**
-- Create waypoint patrol system
-- Implement patrol → chase → return-to-patrol flow
-- Add multiple guard variations
-
-**Phase 11: Advanced Gadgets**
+**Phase 10: Advanced Gadgets**
 - Create item base classes
 - Implement Salad Gun (shoots lettuce)
 - Implement Fan (wind zones)
@@ -512,7 +603,7 @@ public class PlayerInteraction : MonoBehaviour
 - Add gadget synergies (Fan + Perfume)
 - Test interaction flows
 
-**Phase 12: UI & Polish**
+**Phase 11: UI & Polish**
 - Detection indicator UI
 - Inventory display
 - Victory screen and level transitions

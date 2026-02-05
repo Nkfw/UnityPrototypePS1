@@ -1,6 +1,6 @@
 # Sheep Stealth Puzzle Game - Current Project Status
 
-**Last Updated:** 2026-01-24
+**Last Updated:** 2026-01-25
 
 ---
 
@@ -32,6 +32,14 @@ Some levels have different loop, but it all comes to delivering the sheep or spe
 - Running (Shift) - faster, louder
 - Carrying - reduced speed when holding sheep (70%)
 
+**Animation System:**
+- Animator Controller with Speed (Float) and IsJumping (Bool) parameters
+- Idle animation when Speed = 0
+- Walk/Run blend tree based on Speed value (0.3 = walk, 1.0 = run)
+- Jump animation triggered by IsJumping = true, resets to idle/walk on landing
+- Smooth transitions with minimal Exit Time for responsive controls
+- Animation states properly sync with movement and jump mechanics
+
 **Working As Expected:** ✅
 
 ---
@@ -43,10 +51,13 @@ Some levels have different loop, but it all comes to delivering the sheep or spe
 - Pickup/carry/drop sheep with E key
 - Pickup/carry/drop lettuce with E key
 - Ground detection via raycast for accurate drop positioning
+- **Collider-aware drop positioning**: Calculates sheep's collider offset from dimensions, not current position
+- **Trigger-ignoring raycasts**: Uses `QueryTriggerInteraction.Ignore` to only hit walkable surfaces
 - Three-tier fallback system for ground detection
 - Detects nearest sheep in front of player (within pickup range)
 - CarryPosition transform for held items
 - Speed modifier applied when carrying sheep
+- **Scale preservation**: Sheep maintains correct size when carried regardless of parent scale
 
 **Working As Expected:** ✅
 
@@ -60,24 +71,38 @@ Some levels have different loop, but it all comes to delivering the sheep or spe
 - Kinematic Rigidbody for trigger detection
 - Collider disabled when carried, re-enabled when dropped
 - Rotation constraints (X/Z locked) to prevent tilting
+- **Advanced ground positioning system**:
+  - Uses `collider.bounds` for scale-aware offset calculation
+  - Calculates offset in `Awake()` based on actual collider dimensions
+  - Accounts for non-uniform scales automatically
+  - Works correctly on flat ground, bridges, and varied terrain
+- **Trigger-ignoring raycasts**: All ground detection ignores trigger colliders (bridge triggers, etc.)
 - Ground detection system with emergency fallback
 - Falling physics when ground disappears
-- State machine: Idle, Walking, Sniffing, Eating
+- **Scale preservation**: Stores and restores original scale when picked up/dropped
+- State machine: Idle, Walking, Sniffing, Eating, Returning
 
 **Attraction System:**
 - Detects closest lettuce within configurable radius
 - Sniffing delay before movement (configurable)
 - Walks toward lettuce using Rigidbody.MovePosition()
+- **Smooth ground following**: Raycast-based positioning keeps sheep flush with surfaces
 - Eats lettuce after 2-second eating duration (configurable)
 - Destroys lettuce after eating
-- Returns to Idle state
+- Returns to Idle state or Returning state (if inside territory)
 - Handles multiple lettuce sources (always picks closest)
 - Ignores carried lettuce
-- Complete state machine: Idle → Sniffing → Walking → Eating → Idle
+- Complete state machine: Idle → Sniffing → Walking → Eating → Idle/Returning
+
+**Territory/Return System:**
+- SheepFollowingZone.cs manages territory timer
+- 5-second thinking timer after eating (configurable)
+- Sheep returns to home position if inside territory and no new attractions
+- Territory exit permanently "frees" sheep
+- Return cancelled automatically if new lettuce appears
+- Uses same moveSpeed for returning
 
 **Working As Expected:** ✅
-
-**Missing Features:** Territory system (see "NOT YET IMPLEMENTED" section)
 
 ---
 
@@ -142,47 +167,104 @@ Some levels have different loop, but it all comes to delivering the sheep or spe
 
 ---
 
+### 7. Sheep Territory & Return System ✅
+**Files:** `TerritoryZone.cs`, `SheepFollowingZone.cs`, modified `SheepAttraction.cs`
+
+**Implemented:**
+- TerritoryZone.cs - BoxCollider trigger detecting sheep enter/exit
+- SheepFollowingZone.cs - Manages territory timer and triggers return
+- Added "Returning" state to SheepAttraction.SheepState enum
+- Added `StartReturningHome(Vector3 home)` public method
+- Added `ReturnToHome()` private method with attraction checking
+- Added `ResetToIdleState()` for checkpoint restoration
+
+**Territory Behavior:**
+- Inside Territory: After eating, 5-second thinking timer starts (configurable)
+- If timer expires and no new attractions → Sheep returns to home position
+- If new lettuce appears → Return cancelled, sheep goes to lettuce
+- If player picks up sheep → Timer resets
+- Outside Territory: Sheep permanently freed, no returning behavior
+
+**Return Movement:**
+- Uses same `moveSpeed` as walking to lettuce (consistent behavior)
+- Smooth rotation toward home position
+- Auto-cancels if new attraction detected during return
+
+**Working As Expected:** ✅
+
+---
+
+### 8. Kill Zone & Checkpoint System ✅
+**Files:** `KillZone.cs`, `Checkpoint.cs`, `CheckpointManager.cs`, `DeathManager.cs`, `ScreenFader.cs`
+
+**Implemented:**
+
+**Kill Zone:**
+- Large BoxCollider trigger beneath entire level
+- Detects player OR sheep falling off map
+- Player falls → Death sequence → Respawn
+- Sheep falls → Instant fail → Level reload
+- Debug gizmos showing red semi-transparent kill zone
+- Detailed debug logging for fall detection
+
+**Death Manager (Singleton):**
+- Centralized death handling for all death types
+- DeathCause enum: PlayerFell, SheepFell, GuardCaught, Explosion, Trap
+- Coroutine-based death sequence with proper timing
+- Freezes player input during death/respawn
+- Calls ScreenFader and CheckpointManager in sequence
+- Waits for fade animations to complete before continuing
+- Extensible for future death types
+
+**Checkpoint System:**
+- Multiple checkpoint trigger zones throughout level
+- First checkpoint auto-activates on level start
+- Saves full game state: player position/rotation, all sheep positions/rotations
+- Prevents double-activation with state tracking
+- Visual gizmos: Yellow (inactive) → Green (activated)
+- Sphere icon marker 2 units above trigger for easy identification
+
+**Checkpoint Manager:**
+- Singleton managing save/load operations
+- Auto-finds all sheep with "Sheep" tag if not manually assigned
+- Saves initial checkpoint at level start
+- Dictionary-based storage for multiple sheep states
+- Restores player position and rotation
+- Restores all sheep positions and rotations
+- **Resets sheep Rigidbody velocity to prevent infinite falling**
+- **Sets sheep Rigidbody to kinematic for proper movement**
+- **Resets sheep state machine to Idle via ResetToIdleState()**
+- Re-enables sheep GameObject and components if disabled
+
+**Screen Fader:**
+- Canvas with CanvasGroup alpha control
+- FadeToBlack() and FadeFromBlack() coroutines
+- Smooth Lerp-based alpha transitions
+- Configurable fade durations and black screen hold time
+- IsFading property for timing synchronization
+- Utility methods for instant black/transparent
+
+**Death Sequence Flow:**
+1. Death source calls `DeathManager.OnDeath(cause)`
+2. DeathManager starts coroutine
+3. Freeze player input
+4. Fade to black (wait for completion)
+5. Load checkpoint (teleport while screen is black)
+6. Fade from black (wait for completion)
+7. Unfreeze player input
+8. Gameplay continues
+
+**Working As Expected:** ✅
+
+---
+
 ## ⏳ IN PROGRESS / PARTIALLY IMPLEMENTED
 
-_No systems currently in progress. All basic features are complete and working._
+_No systems currently in progress. All core features are complete and working._
 
 ---
 
 ## ❌ NOT YET IMPLEMENTED
-
-### Sheep Territory & Return System
-**Priority:** High (core puzzle mechanic)
-
-**Concept:**
-A "Territory Zone" (large BoxCollider trigger) marks the guard patrol area. Sheep behavior changes based on whether they're inside or outside this zone.
-
-**Inside Territory Zone:**
-1. Sheep follows attraction (lettuce/scent) normally
-2. After eating, waits 5 seconds for new attractions
-3. If no new attraction appears → **returns to home spawn position**
-4. If player picks up sheep during 5-second window → sheep "rescued"
-
-**Outside Territory Zone:**
-1. Sheep permanently "freed" from territory memory
-2. After eating → stays at current location
-3. Only moves if new attraction appears
-4. No returning behavior
-
-**Puzzle Design:**
-Player must either:
-- Lure sheep completely out of territory (safe), OR
-- Pick up sheep within 5-second window after eating (risky, near guards)
-
-**Implementation Needs:**
-- `TerritoryZone.cs` - BoxCollider trigger component
-- `SheepAttraction.cs` modifications:
-  - `Vector3 homePosition` - stored on Start()
-  - `bool isInTerritory` - updated via OnTriggerEnter/Exit
-  - `ReturnHome()` state - walks back to spawn position
-  - 5-second idle timer after eating before returning
-- Territory zone debug visualization (Gizmos)
-
-**Files Needed:** Modify `SheepAttraction.cs`, create `TerritoryZone.cs`
 
 ---
 
@@ -218,7 +300,8 @@ Sheep always chooses closest attraction (distance-based only)
 - Chase cancellation when player escapes line-of-sight
 - Debug gizmos for vision cone visualization
 
-**Needs Polish:**
+**Needs Integration:**
+- Guard catch death type (modify GuardChase.cs to call DeathManager.OnDeath)
 - Visual feedback for guard states (material colors)
 - Parameter tuning based on playtesting
 - Hearing zone integration with player movement states
@@ -326,35 +409,7 @@ When player detected (seen OR heard):
 
 ### Level Systems
 
-#### Kill Zone & Checkpoint System (Not Started)
-**Priority:** High (core fail state mechanic)
-
-**Concept:**
-Large plane collider beneath the entire level that detects if player or sheep falls off the map.
-
-**Kill Zone Behavior:**
-- Positioned beneath level (e.g., Y = -10)
-- Large BoxCollider trigger covering entire level area
-- Detects Player OR Sheep falling through
-
-**Fail Conditions:**
-- Player falls → **FAIL STATE** → reload checkpoint
-- Any sheep falls → **FAIL STATE** → reload checkpoint
-- Death = level failure (not just respawn)
-
-**Checkpoint System:**
-- Save points throughout level
-- Stores player position, carried items, sheep positions
-- On fail: Reload level state from last checkpoint
-- First checkpoint = level start position
-
-**Implementation Needs:**
-- `KillZone.cs` - Large plane trigger, detects Player/Sheep tags
-- `CheckpointManager.cs` - Singleton, stores/loads game state
-- `Checkpoint.cs` - Individual checkpoint trigger volumes
-- Level state data: player position, inventory, sheep positions
-
-**Files Needed:** `KillZone.cs`, `Checkpoint.cs`, `CheckpointManager.cs`
+See sections above for implemented Kill Zone & Checkpoint System ✅
 
 ---
 
@@ -374,14 +429,16 @@ Large plane collider beneath the entire level that detects if player or sheep fa
 ### Code Quality
 - ✅ Component-based architecture maintained
 - ✅ Single Responsibility Principle followed
-- ⚠️ Debug logs still active in production code (should be removed later)
+- ✅ Debug logs cleaned from production code (bridge, sheep, player scripts)
 
 ### Performance
 - No issues identified yet
 - Need to test with multiple sheep/guards
 
 ### Polish Needed
-- No animations yet (all gameplay is functional but lacks visual feedback)
+- ✅ Player animations complete (idle, walk, run, jump)
+- ⏳ Sheep animations (planned)
+- ⏳ Guard animations (planned)
 - No sound effects
 - No particle effects
 - No UI polish
@@ -432,9 +489,9 @@ Assets/
 ## 🎮 PLAYABLE FEATURES (Current Build)
 
 **What You Can Do Right Now:**
-1. Move player with WASD
+1. Move player with WASD with smooth animations (idle, walk, run)
 2. Run (Shift) and Crouch (Ctrl)
-3. Jump with Spacebar
+3. Jump with Spacebar (animated jump with proper landing)
 4. Pick up sheep with E
 5. Carry sheep (moves slower)
 6. Drop sheep with E
@@ -442,37 +499,45 @@ Assets/
 8. Drop lettuce (falls with gravity)
 9. Sheep detects and walks to closest lettuce
 10. Sheep eats lettuce (destroys it after 2 seconds)
-11. Sheep handles multiple lettuces correctly
-12. Walk on bridge → collapses if carrying sheep
-13. Bridge collapses if player + separate sheep both on it
+11. Sheep returns home if inside territory and no new attractions
+12. Sheep freed permanently if it exits territory
+13. Walk on bridge → collapses if carrying sheep
+14. Bridge collapses if player + separate sheep both on it
+15. Stationary guard rotates and chases if player detected
+16. Player/sheep falls off map → Death/respawn system activates
+17. Screen fades to black → Reload checkpoint → Fade from black
+18. Multiple checkpoints save game state
+19. Deliver sheep to win zone → Level complete
 
 **What's Missing for Full Gameplay:**
-- Territory/return system for sheep
-- Guard to avoid
+- Patrolling guards (only stationary implemented)
+- Guard catch death integration
 - Advanced gadgets for puzzles
 - Victory UI and level transitions
+- Detection indicator UI
 
 ---
 
 ## 📋 RECOMMENDED NEXT STEPS
 
-### Immediate Priorities (Phase 4)
-1. **Implement Territory & Return System**
-   - Create TerritoryZone.cs trigger zone
-   - Add return-to-home behavior in SheepAttraction.cs
-   - 5-second idle timer after eating
-   - Territory exit detection
+### Immediate Priorities (Next Phase)
+1. **Integrate Guard Death Type**
+   - Modify GuardChase.cs to call `DeathManager.OnDeath(DeathManager.DeathCause.GuardCaught)` when catching player
+   - Test guard catch → death → respawn flow
+   - Verify screen fade and checkpoint restoration works with guard deaths
 
-### Short-Term Goals (Phase 4)
-2. **Implement Guard AI**
-   - NavMesh patrol system
-   - Basic detection (vision cone)
-   - Chase behavior
+2. **Implement Patrolling Guard**
+   - Create PatrolPath.cs with waypoint system
+   - Modify guard to walk between waypoints
+   - Implement patrol → chase → return-to-patrol flow
+   - Multiple guard variations (fast/slow, short/long routes)
 
-3. **Add Win Condition**
-   - Create WinZone.cs
-   - Level complete trigger
-   - Victory UI
+### Short-Term Goals
+3. **Guard Polish & Testing**
+   - Visual feedback for guard states (material colors)
+   - Parameter tuning based on playtesting
+   - Hearing zone integration with player movement states
+   - Build test level with cover and obstacles
 
 ### Medium-Term Goals (Phase 5)
 4. **Add Advanced Gadgets**
@@ -497,11 +562,6 @@ Assets/
 
 ### Current Issues (To Address Later):
 
-**Sheep Physics:**
-- ⚠️ Sheep colliding with ground while moving (visual glitch - movement works but looks weird)
-- Issue: Likely CharacterController skin width or ground detection causing clipping
-- Priority: Low (cosmetic issue, doesn't break gameplay)
-
 **Sheep Behavior:**
 - ⚠️ Sniff behavior needs more testing
 - Need to verify sniffing delay works correctly in various scenarios
@@ -523,29 +583,42 @@ Assets/
 - ✅ Guard vision cone raycast distance bug (checked full viewDistance instead of actual distance)
 - ✅ Guard state desync when catching player (now properly calls StopChasing)
 - ✅ Head rotation logic inverted (comparison operators fixed)
+- ✅ Sheep infinite falling after death (Rigidbody velocity reset + kinematic restore)
+- ✅ Sheep not moving after respawn (state machine reset to Idle)
+- ✅ Sheep not in checkpoint save data (missing from allSheep list)
+- ✅ Sheep sinking into ground when dropped (now uses collider dimensions, not current position)
+- ✅ Sheep floating above bridge (raycasts now ignore trigger colliders)
+- ✅ Sheep scaling distorted when carried (stores and restores original scale)
+- ✅ Ground positioning affected by scale (now uses bounds-based calculation)
 
 ---
 
 ## 📊 COMPLETION ESTIMATE
 
-**Overall Project Progress:** ~60%
+**Overall Project Progress:** ~75%
 
 | System | Progress | Status |
 |--------|----------|--------|
 | Player Movement | 100% | ✅ Complete |
+| Player Animations | 100% | ✅ Complete |
 | Player Interaction | 100% | ✅ Complete |
 | Sheep Basic Mechanics | 100% | ✅ Complete |
 | Sheep AI Attraction | 100% | ✅ Complete |
-| Sheep Territory System | 0% | ❌ Not Started |
+| Sheep Territory System | 100% | ✅ Complete |
 | Lettuce System | 100% | ✅ Complete |
 | Level Hazards (Bridge) | 100% | ✅ Complete |
 | Win Zone (Basic) | 100% | ✅ Complete |
 | Guard AI (Stationary) | 100% | ✅ Complete |
-| Detection System | 0% | ❌ Not Started |
+| Kill Zone & Checkpoints | 100% | ✅ Complete |
+| Death/Respawn System | 100% | ✅ Complete |
+| Screen Fade Effects | 100% | ✅ Complete |
+| Guard AI (Patrolling) | 0% | ❌ Not Started |
+| Guard Catch Death Integration | 0% | ❌ Not Started |
+| Detection Indicator UI | 0% | ❌ Not Started |
 | Victory UI & Transitions | 0% | ❌ Not Started |
 | Advanced Gadgets | 0% | ❌ Not Started |
-| UI Systems | 0% | ❌ Not Started |
-| Polish/Juice | 0% | ❌ Not Started |
+| Sheep/Guard Animations | 0% | ❌ Not Started |
+| Sound/Particle Effects | 0% | ❌ Not Started |
 
 ---
 
@@ -556,7 +629,27 @@ Assets/
    - Reason: Needed for trigger detection and smooth movement
    - Constraints: X/Z rotation locked to prevent tilting
 
-2. **Lettuce Uses Dynamic Rigidbody**
+2. **Collider Bounds-Based Ground Positioning**
+   - Reason: Scale-independent positioning that works regardless of transform scale
+   - Method: Calculate offset as `transform.position.y - collider.bounds.min.y`
+   - Benefits: Handles non-uniform scales automatically, works on any terrain height
+
+3. **Trigger-Ignoring Raycasts**
+   - Reason: Bridge trigger colliders were causing sheep to float above walkable surface
+   - Solution: Use `QueryTriggerInteraction.Ignore` on all ground detection raycasts
+   - Benefits: Only hits actual walkable surfaces, not detection triggers
+
+4. **Scale Preservation on Pickup**
+   - Reason: Unity parent-child scale inheritance was distorting sheep size
+   - Solution: Store `lossyScale` before parenting, restore as adjusted `localScale` after
+   - Benefits: Sheep maintains correct visual size regardless of parent scale
+
+5. **Collider-Dimension Drop Positioning**
+   - Reason: Using current position while carried gave wrong offset (sheep in air)
+   - Solution: Calculate from collider properties: `(height/2) - center.y`
+   - Benefits: Consistent positioning whether sheep is carried or on ground
+
+6. **Lettuce Uses Dynamic Rigidbody**
    - Reason: Needs realistic falling physics when dropped
    - Switches to kinematic when carried
 

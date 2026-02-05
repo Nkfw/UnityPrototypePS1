@@ -132,8 +132,6 @@ public class PlayerInteraction : MonoBehaviour
             PickupLettuce(nearestLettuce);
             return;
         }
-
-        Debug.Log("No items nearby to pick up!");
     }
 
     private Lettuce FindNearestLettuce()
@@ -179,8 +177,6 @@ public class PlayerInteraction : MonoBehaviour
         {
             playerController.SetCarryingState(true);
         }
-
-        Debug.Log($"Picked up sheep: {currentSheep.name}");
     }
 
     private void PickupLettuce(Lettuce lettuce)
@@ -188,10 +184,6 @@ public class PlayerInteraction : MonoBehaviour
         currentLettuce = lettuce;
         currentItemType = CarriedItemType.Lettuce;
         currentLettuce.OnPickedUp(carryPosition);
-
-        // No speed modifier for lettuce (lightweight)
-
-        Debug.Log($"Picked up lettuce: {currentLettuce.name}");
     }
 
     private void DropCurrentItem()
@@ -199,20 +191,38 @@ public class PlayerInteraction : MonoBehaviour
         // Calculate drop position in front of player
         Vector3 dropPosition = transform.position + transform.forward * dropDistance;
 
-        // Raycast down to find ground from player's feet position
-        Vector3 rayStart = new Vector3(dropPosition.x, transform.position.y + 2f, dropPosition.z);
-        if (Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, groundRaycastDistance, groundLayer))
+        // Get sheep's collider offset if we're dropping a sheep
+        float sheepOffset = 0.5f; // Default fallback
+        if (currentSheep != null)
         {
-            // Drop at ground level with small offset
-            dropPosition.y = hit.point.y + 0.1f;
-            Debug.Log($"Drop raycast hit ground at Y={hit.point.y}");
+            // Calculate offset from collider properties, not current position
+            // (Current position is unreliable because sheep is being carried high in the air)
+            CapsuleCollider sheepCollider = currentSheep.GetComponent<CapsuleCollider>();
+            if (sheepCollider != null)
+            {
+                // Calculate from collider dimensions in local space
+                // For a Y-axis capsule: offset = (height/2) - center.y
+                float localHeight = sheepCollider.height;
+                float localCenterY = sheepCollider.center.y;
+                sheepOffset = (localHeight / 2f) - localCenterY;
+            }
+        }
+
+        // Raycast down to find ground from player's feet position
+        // QueryTriggerInteraction.Ignore ensures we don't hit trigger colliders (like bridge triggers)
+        Vector3 rayStart = new Vector3(dropPosition.x, transform.position.y + 2f, dropPosition.z);
+        if (Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, groundRaycastDistance, groundLayer, QueryTriggerInteraction.Ignore))
+        {
+            // Drop at ground level with sheep collider offset
+            dropPosition.y = hit.point.y + sheepOffset + 0.05f;
+            Debug.Log($"Drop raycast hit ground at Y={hit.point.y}, sheep offset={sheepOffset:F2}");
         }
         else
         {
             // Fallback: raycast from player position straight down to find our current ground
-            if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit playerGroundHit, 5f, groundLayer))
+            if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit playerGroundHit, 5f, groundLayer, QueryTriggerInteraction.Ignore))
             {
-                dropPosition.y = playerGroundHit.point.y + 0.1f;
+                dropPosition.y = playerGroundHit.point.y + sheepOffset + 0.05f;
                 Debug.LogWarning($"Drop position raycast failed, using player's ground level Y={playerGroundHit.point.y}");
             }
             else
@@ -223,7 +233,15 @@ public class PlayerInteraction : MonoBehaviour
             }
         }
 
-        switch (currentItemType)
+        // Store the type before dropping (needed for switch)
+        CarriedItemType droppedType = currentItemType;
+
+        // IMPORTANT: Clear carrying state BEFORE calling drop methods
+        // This prevents race conditions where re-enabled colliders trigger checks
+        // while the player is still technically "carrying" the item
+        currentItemType = CarriedItemType.None;
+
+        switch (droppedType)
         {
             case CarriedItemType.Sheep:
                 DropSheep(dropPosition);
@@ -232,11 +250,8 @@ public class PlayerInteraction : MonoBehaviour
             case CarriedItemType.Lettuce:
                 currentLettuce.OnDropped(dropPosition);
                 currentLettuce = null;
-                Debug.Log("Dropped lettuce");
                 break;
         }
-
-        currentItemType = CarriedItemType.None;
     }
 
     private void DropSheep(Vector3 dropPosition)
@@ -252,14 +267,49 @@ public class PlayerInteraction : MonoBehaviour
             playerController.SetCarryingState(false);
         }
 
-        Debug.Log($"Dropped sheep: {currentSheep.name}");
-
         currentSheep = null;
     }
 
     // Public getters for other scripts to check carrying state
     public bool IsCarryingAnything => currentItemType != CarriedItemType.None;
     public bool IsCarryingSheep => currentItemType == CarriedItemType.Sheep;
+
+    // Called by CheckpointManager to forcefully clear carrying state when loading checkpoint
+    public void ForceDropCarriedItem()
+    {
+        if (currentItemType == CarriedItemType.None) return;
+
+        // CRITICAL: Properly drop sheep using its OnDropped method
+        // This ensures isBeingCarried is set to false, otherwise sheep will float
+        if (currentSheep != null)
+        {
+            currentSheep.OnDropped(currentSheep.transform.position);
+            currentSheep = null;
+        }
+
+        // Clear lettuce reference
+        if (currentLettuce != null)
+        {
+            currentLettuce.transform.SetParent(null);
+
+            Collider lettuceCollider = currentLettuce.GetComponent<Collider>();
+            if (lettuceCollider != null)
+            {
+                lettuceCollider.enabled = true;
+            }
+
+            currentLettuce = null;
+        }
+
+        // Clear item type
+        currentItemType = CarriedItemType.None;
+
+        // Notify player controller
+        if (playerController != null)
+        {
+            playerController.SetCarryingState(false);
+        }
+    }
 
     // Debug visualization
     private void OnDrawGizmos()
